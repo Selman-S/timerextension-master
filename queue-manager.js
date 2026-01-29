@@ -1,5 +1,5 @@
 // Timer Queue Manager - Main Module
-// Auto time entry system with 59-minute split logic
+// Auto time entry system with 180-minute split logic
 
 (() => {
   'use strict';
@@ -9,7 +9,7 @@
   // ============================================================================
   
   const CONFIG = {
-    TIMER_LIMIT: 59,                    // Max 59 minutes per timer
+    TIMER_LIMIT: 180,                   // Max 180 minutes (3 hours) per timer
     DAILY_LIMIT: 480,                   // 8 hours daily limit
     CHECK_INTERVAL: 5000,               // Check running timer every 5s
     SAVE_INTERVAL: 30000,               // Save to storage every 30s

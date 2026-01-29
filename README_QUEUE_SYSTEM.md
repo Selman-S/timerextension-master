@@ -2,18 +2,18 @@
 
 ## 📖 Genel Bakış
 
-Bu Chrome eklentisi, Hyperactive Pro zaman takip sistemindeki **59 dakika limit** ve **manuel süre girişi kısıtlaması** sorunlarını çözmek için geliştirilmiştir.
+Bu Chrome eklentisi, Hyperactive Pro zaman takip sistemindeki **180 dakika (3 saat) limit** ve **manuel süre girişi kısıtlaması** sorunlarını çözmek için geliştirilmiştir.
 
 ### ❌ Problem
 - Manuel süre girişi devre dışı bırakıldı
-- Her timer maksimum 59 dakika çalışabiliyor
+- Her timer maksimum 180 dakika (3 saat) çalışabiliyor
 - Geçmiş tarihler için kayıt eklenemiyor
 - Günlük 8 saat limit mevcut
 
 ### ✅ Çözüm
 **Otomatik Timer Queue (Sıra) Sistemi:**
 - Birden fazla time'ı sıraya ekleyin
-- Otomatik olarak 59 dakikalık parçalara bölünür
+- Otomatik olarak 180 dakikalık (3 saatlik) parçalara bölünür
 - Sırayla işlenir ve tamamlanır
 - Günlük limit kontrolü yapar
 - Pause/Resume desteği
@@ -23,7 +23,7 @@ Bu Chrome eklentisi, Hyperactive Pro zaman takip sistemindeki **59 dakika limit*
 ## 🎯 Özellikler
 
 ### 1. ⏱️ Akıllı Queue Yönetimi
-- **Otomatik bölme:** 140 dakikalık kayıt → 59dk + 59dk + 22dk
+- **Otomatik bölme:** 300 dakikalık kayıt → 180dk + 120dk (3 saat + 2 saat)
 - **Sıralı işlem:** Her kayıt sırayla otomatik işlenir
 - **Durum takibi:** Pending → Running → Completed
 - **Hata yönetimi:** API hatalarında otomatik retry
@@ -115,8 +115,8 @@ timerextension-master/
    - Emoji desteklenir (backend otomatik temizler)
 
 5. **Süre Girin**
-   - Dakika cinsinden (örn: 140)
-   - Sistem otomatik 59dk'lık parçalara böler
+   - Dakika cinsinden (örn: 300)
+   - Sistem otomatik 180dk'lık (3 saatlik) parçalara böler
 
 6. **Queue'ya Ekle**
    - Butona tıklayın
@@ -162,31 +162,31 @@ Her item üzerinde:
 ### Akış Diyagramı
 
 ```
-1. Kullanıcı 140dk'lık time ekler
+1. Kullanıcı 300dk'lık time ekler
    ↓
 2. Queue item oluşturulur
    ↓
 3. "Start Queue" tıklanır
    ↓
-4. İlk chunk (59dk) için timer başlatılır
+4. İlk chunk (180dk - 3 saat) için timer başlatılır
    API: POST /time (backend otomatik başlatır)
    ↓
-5. 59 dakika sayaç çalışır (her 1dk'da güncelleme)
+5. 180 dakika (3 saat) sayaç çalışır (her 1dk'da güncelleme)
    ↓
-6. 59 dakika dolunca:
+6. 180 dakika dolunca:
    API: POST /time/:id/stop
    ↓
-7. Kalan süre var mı? (140 - 59 = 81dk)
+7. Kalan süre var mı? (300 - 180 = 120dk)
    ↓
-8. İkinci chunk (59dk) için yeni timer başlatılır
+8. İkinci chunk (120dk) için yeni timer başlatılır
    API: POST /time
    ↓
-9. 59 dakika sayaç çalışır
+9. 120 dakika sayaç çalışır
    ↓
-10. 59 dakika dolunca:
+10. 120 dakika dolunca:
     API: POST /time/:id/stop
     ↓
-11. Kalan süre var mı? (81 - 59 = 22dk)
+11. Kalan süre var mı? (120 - 120 = 0dk)
     ↓
 12. Üçüncü chunk (22dk) için yeni timer başlatılır
     API: POST /time
@@ -345,7 +345,7 @@ Chrome Storage Local:
 - **API Retry:** 3 deneme, exponential backoff
 
 ### Limitler
-- **Timer Limit:** 59 dakika
+- **Timer Limit:** 180 dakika (3 saat)
 - **Günlük Limit:** 480 dakika (8 saat)
 - **Max Queue Size:** Sınırsız (tavsiye: 10-15 item)
 - **Notification History:** 50 kayıt
@@ -374,7 +374,7 @@ Chrome Storage Local:
 
 ### v2.0.0 (21 Ocak 2026)
 - ✨ Queue sistem eklendi
-- ✨ 59 dakika otomatik bölme
+- ✨ 180 dakika (3 saat) otomatik bölme
 - ✨ Pause/Resume desteği
 - ✨ Bildirim sistemi
 - ✨ Günlük limit kontrolü

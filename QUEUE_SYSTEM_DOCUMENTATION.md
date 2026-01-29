@@ -23,16 +23,16 @@ Kullanıcının manuel süre girişi yapamaması nedeniyle, otomatik timer queue
   ```
 
 ### 2. Otomatik Timer Yönetimi
-- **59 Dakika Bölümleme:**
-  - 140dk → [59dk, 59dk, 22dk] (3 ayrı timer kaydı)
-  - Her 59dk'da otomatik stop + yeni start
+- **180 Dakika (3 Saat) Bölümleme:**
+  - 300dk → [180dk, 120dk] (2 ayrı timer kaydı)
+  - Her 180dk'da otomatik stop + yeni start
   - Son parça kalan süre kadar
 
 - **API İşlem Sırası:**
   ```
   1. Mevcut çalışan timer'ı durdur (POST /time/:id/stop)
   2. Yeni timer oluştur (POST /time)
-  3. 59 dakika bekle (setInterval)
+  3. 180 dakika (3 saat) bekle (setInterval)
   4. Timer'ı durdur
   5. Sıradaki item'a geç
   ```
@@ -225,7 +225,7 @@ processQueueItem(index):
      - Her 1dk'da remainingDuration--
      - Her 1dk'da completedDuration++
      - UI'ı güncelle
-  9. 59 dakika veya item.remainingDuration dolunca:
+  9. 180 dakika (3 saat) veya item.remainingDuration dolunca:
      - Timer durdur (API: POST /time/{id}/stop)
      - Eğer remainingDuration > 0:
        → Yeni timer başlat (adım 4'e dön)
@@ -460,12 +460,12 @@ if (Notification.permission === 'granted') {
 
 ### Phase 1 (MVP)
 - [x] Queue oluşturma UI
-- [x] Basit timer yönetimi (59dk bölme yok)
+- [x] Basit timer yönetimi (180dk bölme yok)
 - [x] Storage implementasyonu
 - [x] Start/Stop fonksiyonları
 
 ### Phase 2 (Core)
-- [ ] 59dk otomatik bölme
+- [ ] 180dk (3 saat) otomatik bölme
 - [ ] Pause/Resume
 - [ ] Günlük limit kontrolü
 - [ ] Hata yönetimi
