@@ -206,7 +206,7 @@
           },
           {
             label: 'Hedef Saat',
-            data: Array(dataValues.length).fill(110),
+            data: Array(dataValues.length).fill(120), // Target hours: 120
             borderColor: 'rgb(143, 190, 0)', // İstediğiniz renge göre ayarlayabilirsiniz
             backgroundColor: 'rgb(143, 190, 0,0)',
             fill: false,
@@ -351,13 +351,17 @@
 
     const [currentStart, currentEnd] = getCurrentMonthRange();
     const [prevStart, prevEnd] = getPreviousMonthRange();
-    const allMonthsRanges = getAllFullMonthsSince(2023, 2); // Mart 2023 (0: Ocak)
+    
+    // Son 12 tamamlanmış ayı al (şu anki ay dahil değil)
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+    const allMonthsRanges = getAllFullMonthsSince(startDate.getFullYear(), startDate.getMonth());
 
     // Verileri Getirme
     const currentBillable = await fetchBillableTime(currentStart, currentEnd);
     const previousBillable = await fetchBillableTime(prevStart, prevEnd);
 
-    // Geçmiş Ayların Ortalamaını Hesaplama
+    // Geçmiş Ayların Ortalamaını Hesaplama (son 12 ay)
     let totalPastBillable = 0;
     for (const [start, end] of allMonthsRanges) {
       totalPastBillable += await fetchBillableTime(start, end);
