@@ -683,7 +683,7 @@
     reportsItem.id = REPORTS_LINK_ID;
 
     reportsItem.innerHTML = `
-      <a href="/reports" class="d-flex justify-content-start">
+      <a href="/reports-new" class="d-flex justify-content-start">
         <div class="menu-text">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -692,7 +692,7 @@
             <line x1="16" y1="17" x2="8" y2="17"></line>
             <polyline points="10 9 9 9 8 9"></polyline>
           </svg>
-          <span class="menu-item menu-title">Reports</span>
+          <span class="menu-item menu-title">Reports New</span>
         </div>
       </a>
     `;
@@ -736,6 +736,7 @@
     const currentURL = window.location.href;
     const isTimePage = currentURL.includes('https://hyperactive.pro/time');
     const isWorkloadPage = currentURL.includes('https://hyperactive.pro/workload');
+    const isReportsV2Page = currentURL.includes('https://hyperactive.pro/reports-new');
 
     // Add Reports link to navbar (works on all pages)
     addReportsLink();
@@ -743,8 +744,14 @@
     // Update active state for all navigation links
     updateActiveNavLink();
 
+    // ReportsV2 sayfasında - ReportsV2Manager kendi container'ını yönetir
+    if (isReportsV2Page) {
+      // ReportsV2Manager.init() zaten reports-v2.js'de çağrılıyor
+      removeInfoContainer();
+      removeWorkloadInfo();
+    }
     // Time sayfasında
-    if (isTimePage) {
+    else if (isTimePage) {
       if (!document.getElementById(INFO_CONTAINER_ID)) {
         addInfoContainer();
       }
