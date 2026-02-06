@@ -170,6 +170,7 @@
     // Load dashboard data
     async loadDashboardData() {
       this.state.loading = true;
+      this.showLoadingState();
       try {
         const queryParams = new URLSearchParams();
         Object.entries(this.state.filters).forEach(([key, value]) => {
@@ -186,6 +187,7 @@
         console.error('Dashboard data loading error:', error);
       } finally {
         this.state.loading = false;
+        this.hideLoadingState();
       }
     },
 
@@ -226,6 +228,9 @@
 
       // Attach event listeners
       this.attachEventListeners();
+      
+      // Attach click listeners for filterable items
+      this.attachFilterListeners();
     },
 
     // Render header
@@ -387,7 +392,7 @@
         <div class="table-card">
           <div class="table-header">
             <h4>Client - Hours</h4>
-            <button class="btn-download" onclick="ReportsV2Manager.exportCSV('client')">📥</button>
+            <button class="btn-download" data-export-type="client">📥</button>
           </div>
           <div class="table-body">
             <table class="data-table">
@@ -400,7 +405,7 @@
               <tbody>
                 ${dashboardData.clientSummary.map(client => `
                   <tr>
-                    <td class="clickable" onclick="ReportsV2Manager.filterByClient(${client.clientId})">
+                    <td class="clickable" data-filter-type="client" data-filter-id="${client.clientId}">
                       ${client.clientName}
                     </td>
                     <td class="text-right">${convertMinutesToHours(client.totalHours)}</td>
@@ -422,7 +427,7 @@
         <div class="table-card">
           <div class="table-header">
             <h4>User - Hours</h4>
-            <button class="btn-download" onclick="ReportsV2Manager.exportCSV('user')">📥</button>
+            <button class="btn-download" data-export-type="user">📥</button>
           </div>
           <div class="table-body">
             <table class="data-table">
@@ -435,7 +440,7 @@
               <tbody>
                 ${dashboardData.userSummary.map(user => `
                   <tr>
-                    <td class="clickable" onclick="ReportsV2Manager.filterByUser(${user.userId})">
+                    <td class="clickable" data-filter-type="user" data-filter-id="${user.userId}">
                       <img src="${AVATAR_URL}/${user.userAvatar}" class="avatar" onerror="this.style.display='none'">
                       ${user.userName}
                     </td>
@@ -458,7 +463,7 @@
         <div class="table-card">
           <div class="table-header">
             <h4>Action Item - Hours</h4>
-            <button class="btn-download" onclick="ReportsV2Manager.exportCSV('task')">📥</button>
+            <button class="btn-download" data-export-type="task">📥</button>
           </div>
           <div class="table-body">
             <table class="data-table">
@@ -497,7 +502,7 @@
         <div class="table-card">
           <div class="table-header">
             <h4>Department - Hours</h4>
-            <button class="btn-download" onclick="ReportsV2Manager.exportCSV('department')">📥</button>
+            <button class="btn-download" data-export-type="department">📥</button>
           </div>
           <div class="table-body">
             <table class="data-table">
@@ -510,7 +515,7 @@
               <tbody>
                 ${dashboardData.departmentSummary.map(dept => `
                   <tr>
-                    <td class="clickable" onclick="ReportsV2Manager.filterByDepartment(${dept.departmentId})">
+                    <td class="clickable" data-filter-type="department" data-filter-id="${dept.departmentId}">
                       ${dept.departmentName}
                     </td>
                     <td class="text-right">${convertMinutesToHours(dept.totalHours)}</td>
@@ -532,7 +537,7 @@
         <div class="table-card">
           <div class="table-header">
             <h4>Team - Hours</h4>
-            <button class="btn-download" onclick="ReportsV2Manager.exportCSV('team')">📥</button>
+            <button class="btn-download" data-export-type="team">📥</button>
           </div>
           <div class="table-body">
             <table class="data-table">
@@ -545,7 +550,7 @@
               <tbody>
                 ${dashboardData.teamSummary.map(team => `
                   <tr>
-                    <td class="clickable" onclick="ReportsV2Manager.filterByTeam(${team.teamId})">
+                    <td class="clickable" data-filter-type="team" data-filter-id="${team.teamId}">
                       ${team.teamName}
                     </td>
                     <td class="text-right">${convertMinutesToHours(team.totalHours)}</td>
@@ -599,7 +604,7 @@
         <div class="table-card table-card-full">
           <div class="table-header">
             <h4>Note - User - Hours</h4>
-            <button class="btn-download" onclick="ReportsV2Manager.exportCSV('detailed')">📥</button>
+            <button class="btn-download" data-export-type="detailed">📥</button>
           </div>
           <div class="table-body">
             <table class="data-table">
@@ -779,18 +784,24 @@
       // Apply filters button
       const applyBtn = document.getElementById('apply-filters');
       if (applyBtn) {
-        applyBtn.addEventListener('click', () => {
+        applyBtn.addEventListener('click', async () => {
+          applyBtn.disabled = true;
+          applyBtn.innerHTML = '<span class="loading-spinner"></span> Loading...';
+          
           this.updateFilters();
-          this.loadDashboardData();
-          this.loadDetailedData();
-          setTimeout(() => this.render(), 500);
+          await this.loadDashboardData();
+          await this.loadDetailedData();
+          this.render();
         });
       }
 
       // Clear filters button
       const clearBtn = document.getElementById('clear-filters');
       if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
+        clearBtn.addEventListener('click', async () => {
+          clearBtn.disabled = true;
+          clearBtn.innerHTML = '<span class="loading-spinner"></span> Clearing...';
+          
           this.state.filters = {
             ...getMonthRange(),
             userId: null,
@@ -800,10 +811,137 @@
             teamId: null,
             billable: null,
           };
-          this.loadDashboardData();
-          this.loadDetailedData();
-          setTimeout(() => this.render(), 500);
+          await this.loadDashboardData();
+          await this.loadDetailedData();
+          this.render();
         });
+      }
+
+      // CSV Export buttons
+      document.querySelectorAll('.btn-download[data-export-type]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const exportType = e.target.closest('.btn-download').getAttribute('data-export-type');
+          this.exportCSV(exportType);
+        });
+      });
+    },
+
+    // Attach filter listeners for clickable items
+    attachFilterListeners() {
+      document.querySelectorAll('.clickable[data-filter-type]').forEach(element => {
+        element.addEventListener('click', async (e) => {
+          const filterType = e.currentTarget.getAttribute('data-filter-type');
+          const filterId = e.currentTarget.getAttribute('data-filter-id');
+          
+          // Show loading state
+          this.state.loading = true;
+          this.showLoadingState();
+          
+          // Apply filter based on type
+          switch(filterType) {
+            case 'client':
+              this.state.filters.clientId = filterId;
+              break;
+            case 'user':
+              this.state.filters.userId = filterId;
+              break;
+            case 'department':
+              this.state.filters.departmentId = filterId;
+              break;
+            case 'team':
+              this.state.filters.teamId = filterId;
+              break;
+          }
+          
+          // Update filter dropdowns
+          this.updateFilterDropdowns();
+          
+          // Reload data
+          await this.loadDashboardData();
+          await this.loadDetailedData();
+          
+          // Re-render
+          this.render();
+        });
+      });
+    },
+
+    // Update filter dropdowns to match current filters
+    updateFilterDropdowns() {
+      const { filters } = this.state;
+      
+      if (filters.userId) {
+        const userSelect = document.getElementById('user-filter');
+        if (userSelect) userSelect.value = filters.userId;
+      }
+      
+      if (filters.clientId) {
+        const clientSelect = document.getElementById('client-filter');
+        if (clientSelect) clientSelect.value = filters.clientId;
+      }
+      
+      if (filters.departmentId) {
+        const deptSelect = document.getElementById('department-filter');
+        if (deptSelect) deptSelect.value = filters.departmentId;
+      }
+      
+      if (filters.teamId) {
+        const teamSelect = document.getElementById('team-filter');
+        if (teamSelect) teamSelect.value = filters.teamId;
+      }
+    },
+
+    // Show loading state
+    showLoadingState() {
+      const container = document.getElementById(REPORTS_V2_CONTAINER_ID);
+      if (!container) return;
+      
+      const wrapper = container.querySelector('.reports-v2-wrapper');
+      if (wrapper) {
+        wrapper.style.opacity = '0.5';
+        wrapper.style.pointerEvents = 'none';
+        
+        // Add loading overlay
+        let overlay = container.querySelector('.loading-overlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.className = 'loading-overlay';
+          overlay.innerHTML = `
+            <div class="loading-spinner-large"></div>
+            <p>Loading data...</p>
+          `;
+          container.appendChild(overlay);
+        }
+      }
+    },
+
+    // Hide loading state
+    hideLoadingState() {
+      const container = document.getElementById(REPORTS_V2_CONTAINER_ID);
+      if (!container) return;
+      
+      const wrapper = container.querySelector('.reports-v2-wrapper');
+      if (wrapper) {
+        wrapper.style.opacity = '1';
+        wrapper.style.pointerEvents = 'auto';
+      }
+      
+      const overlay = container.querySelector('.loading-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+      
+      // Reset button states
+      const applyBtn = document.getElementById('apply-filters');
+      if (applyBtn) {
+        applyBtn.disabled = false;
+        applyBtn.innerHTML = 'Apply Filters';
+      }
+      
+      const clearBtn = document.getElementById('clear-filters');
+      if (clearBtn) {
+        clearBtn.disabled = false;
+        clearBtn.innerHTML = 'Clear';
       }
     },
 
@@ -821,36 +959,40 @@
       };
     },
 
-    // Filter by client
-    filterByClient(clientId) {
+    // Filter by client (kept for backward compatibility, but now handled by attachFilterListeners)
+    async filterByClient(clientId) {
       this.state.filters.clientId = clientId;
-      this.loadDashboardData();
-      this.loadDetailedData();
-      setTimeout(() => this.render(), 500);
+      this.updateFilterDropdowns();
+      await this.loadDashboardData();
+      await this.loadDetailedData();
+      this.render();
     },
 
-    // Filter by user
-    filterByUser(userId) {
+    // Filter by user (kept for backward compatibility, but now handled by attachFilterListeners)
+    async filterByUser(userId) {
       this.state.filters.userId = userId;
-      this.loadDashboardData();
-      this.loadDetailedData();
-      setTimeout(() => this.render(), 500);
+      this.updateFilterDropdowns();
+      await this.loadDashboardData();
+      await this.loadDetailedData();
+      this.render();
     },
 
-    // Filter by department
-    filterByDepartment(departmentId) {
+    // Filter by department (kept for backward compatibility, but now handled by attachFilterListeners)
+    async filterByDepartment(departmentId) {
       this.state.filters.departmentId = departmentId;
-      this.loadDashboardData();
-      this.loadDetailedData();
-      setTimeout(() => this.render(), 500);
+      this.updateFilterDropdowns();
+      await this.loadDashboardData();
+      await this.loadDetailedData();
+      this.render();
     },
 
-    // Filter by team
-    filterByTeam(teamId) {
+    // Filter by team (kept for backward compatibility, but now handled by attachFilterListeners)
+    async filterByTeam(teamId) {
       this.state.filters.teamId = teamId;
-      this.loadDashboardData();
-      this.loadDetailedData();
-      setTimeout(() => this.render(), 500);
+      this.updateFilterDropdowns();
+      await this.loadDashboardData();
+      await this.loadDetailedData();
+      this.render();
     },
 
     // Export CSV
