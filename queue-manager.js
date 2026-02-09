@@ -10,7 +10,7 @@
   
   const CONFIG = {
     TIMER_LIMIT: 180,                   // Max 180 minutes (3 hours) per timer
-    DAILY_LIMIT: 480,                   // 8 hours daily limit
+    DAILY_LIMIT: 680,                   // 8 hours daily limit
     CHECK_INTERVAL: 5000,               // Check running timer every 5s
     SAVE_INTERVAL: 30000,               // Save to storage every 30s
     API_RETRY_MAX: 3,                   // Max retry for API calls
