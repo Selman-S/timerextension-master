@@ -206,7 +206,7 @@
           },
           {
             label: 'Hedef Saat',
-            data: Array(dataValues.length).fill(120), // Target hours: 120
+            data: Array(dataValues.length).fill(132), // Target hours: 32
             borderColor: 'rgb(143, 190, 0)', // İstediğiniz renge göre ayarlayabilirsiniz
             backgroundColor: 'rgb(143, 190, 0,0)',
             fill: false,
@@ -447,7 +447,8 @@
     // Tablo başlığına "Çalışılan" bilgisi ekle
     const headerRow = document.querySelector('.rdt_TableHeadRow');
     if (headerRow) {
-      const remainingTimeHeader = headerRow.querySelector('[id="column-function(e){return e.remainingTime}"]');
+      // Actual column ID in DOM uses arrow function shorthand, not full function syntax
+      const remainingTimeHeader = headerRow.querySelector('[id="column-s=>s.remainingTime"]');
       if (remainingTimeHeader && !remainingTimeHeader.querySelector('.worked-hours-header')) {
         const headerText = remainingTimeHeader.querySelector('div');
         if (headerText) {
@@ -632,10 +633,15 @@
     
     infoContainer.appendChild(contentContainer);
     
-    // Tablonun üstüne ekle
-    const tableHeader = document.querySelector('.sc-idXgbr');
-    if (tableHeader && tableHeader.parentNode) {
-      tableHeader.parentNode.insertBefore(infoContainer, tableHeader.nextSibling);
+    // Insert above the data table — use stable custom class or header element as anchor
+    const anchor = document.querySelector('.dataTable-custom') || document.querySelector('header.sc-gFqAkR');
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(infoContainer, anchor);
+    } else {
+      // Fallback: append to card-body
+      const cardBody = document.querySelector('.card-body');
+      if (cardBody) cardBody.prepend(infoContainer);
+      console.warn('[HyperActive Ext] Workload anchor not found, fallback used.');
     }
   };
 
