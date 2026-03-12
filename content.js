@@ -668,6 +668,13 @@
       return;
     }
 
+    // Only show Reports New link for the authorized user
+    const profileAvatar = document.querySelector('a.profile-wrapper img');
+    const isAuthorizedUser = profileAvatar && profileAvatar.src.includes('selman-sahbudak');
+    if (!isAuthorizedUser) {
+      return;
+    }
+
     // Find the navigation menu
     const navigation = document.querySelector('.navigation.navigation-main');
     if (!navigation) {
