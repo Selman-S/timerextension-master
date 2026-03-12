@@ -16,9 +16,10 @@
         "queue-ui-2.js",
         "queue-ui-3.js",
         "queue-ui.js",
+        "reports-v2.js",
         "content.js"
       ],
-      "css": []
+      "css": ["reports-v2.css"]
     }
   ],
     "icons": {
