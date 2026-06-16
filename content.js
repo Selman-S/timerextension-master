@@ -759,9 +759,10 @@
 
     // ReportsV2 sayfasında - ReportsV2Manager kendi container'ını yönetir
     if (isReportsV2Page) {
-      // ReportsV2Manager.init() zaten reports-v2.js'de çağrılıyor
+      // ReportsV2Manager.init() reports-v2/bootstrap.js'de çağrılıyor
       removeInfoContainer();
       removeWorkloadInfo();
+      if (window.WorkloadBrands) window.WorkloadBrands.remove();
     }
     // Time sayfasında
     else if (isTimePage) {
@@ -769,16 +770,22 @@
         addInfoContainer();
       }
       removeWorkloadInfo();
+      if (window.WorkloadBrands) window.WorkloadBrands.remove();
     } 
     // Workload sayfasında
     else if (isWorkloadPage) {
       removeInfoContainer();
       addWorkloadInfo();
+      // Brand-responsible panel (extension-only API fetch)
+      if (window.WorkloadBrands) {
+        window.WorkloadBrands.ensurePanel();
+      }
     } 
     // Diğer sayfalarda
     else {
       removeInfoContainer();
       removeWorkloadInfo();
+      if (window.WorkloadBrands) window.WorkloadBrands.remove();
     }
   };
 

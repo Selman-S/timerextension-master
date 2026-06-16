@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Hyperactive Pro Time Enhancer",
-    "version": "2.1",
+    "version": "3.6.3",
     "description": "Mevcut ve geçmiş ayların çalışma saatlerini görüntüler.",
     "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [
@@ -16,7 +16,21 @@
         "queue-ui-2.js",
         "queue-ui-3.js",
         "queue-ui.js",
-        "reports-v2.js",
+        "reports-v2/constants.js",
+        "reports-v2/utils.js",
+        "reports-v2/charts.js",
+        "reports-v2/cache.js",
+        "reports-v2/compute.js",
+        "reports-v2/data.js",
+        "reports-v2/render-shell.js",
+        "reports-v2/render-leaderboard.js",
+        "reports-v2/render-brands.js",
+        "reports-v2/render-explore.js",
+        "reports-v2/events.js",
+        "reports-v2/export.js",
+        "reports-v2/manager.js",
+        "reports-v2/bootstrap.js",
+        "workload-brands.js",
         "content.js"
       ],
       "css": ["reports-v2.css"]
