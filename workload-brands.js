@@ -12,6 +12,20 @@
     loaded: false,
     cachedProjects: null,
     cachedWlLimits: null,
+    cachedRows: null,
+    defaultRowOrder: [],
+    sortState: { key: null, dir: null },
+
+    // Column defs for header sort (text | number)
+    sortColumns: [
+      { key: 'brand', label: 'Marka', type: 'text' },
+      { key: 'department', label: 'Departman', type: 'text' },
+      { key: 'myWorkedHours', label: 'Senin saatin', type: 'number' },
+      { key: 'teamWorkedHours', label: 'CRO ekip toplamı', type: 'number' },
+      { key: 'limit', label: 'CRO limit', type: 'number' },
+      { key: 'remaining', label: 'Kalan (CRO)', type: 'number' },
+      { key: 'pct', label: '%', type: 'number' },
+    ],
 
     getCurrentUser() {
       try {
@@ -213,6 +227,105 @@
       return `${value}${suffix}`;
     },
 
+    // Compare cell values; nulls always sort last
+    compareSortValues(a, b, type) {
+      const aNull = a == null || (type === 'number' && Number.isNaN(a));
+      const bNull = b == null || (type === 'number' && Number.isNaN(b));
+      if (aNull && bNull) return 0;
+      if (aNull) return 1;
+      if (bNull) return -1;
+      if (type === 'number') return a - b;
+      return String(a).localeCompare(String(b), 'tr', { sensitivity: 'base' });
+    },
+
+    // asc → desc → default order
+    cycleSort(columnKey) {
+      if (this.sortState.key !== columnKey) {
+        this.sortState = { key: columnKey, dir: 'asc' };
+        return;
+      }
+      if (this.sortState.dir === 'asc') {
+        this.sortState.dir = 'desc';
+        return;
+      }
+      this.sortState = { key: null, dir: null };
+    },
+
+    sortRows(rows) {
+      const { key, dir } = this.sortState;
+      if (!key || !dir) {
+        const order = this.defaultRowOrder || [];
+        const byId = new Map(rows.map((r) => [String(r.projectId), r]));
+        return order.map((id) => byId.get(String(id))).filter(Boolean);
+      }
+      const col = this.sortColumns.find((c) => c.key === key);
+      return [...rows].sort((a, b) => {
+        const cmp = this.compareSortValues(a[key], b[key], col?.type || 'text');
+        return dir === 'asc' ? cmp : -cmp;
+      });
+    },
+
+    renderSortableHeader(col) {
+      const active = this.sortState.key === col.key && this.sortState.dir;
+      const indicator =
+        this.sortState.key === col.key
+          ? this.sortState.dir === 'asc'
+            ? ' ↑'
+            : this.sortState.dir === 'desc'
+              ? ' ↓'
+              : ''
+          : '';
+      return `<th class="ha-bw-sortable ${active ? 'ha-bw-sort-active' : ''}" data-sort-key="${col.key}" title="Sırala: artan / azalan / varsayılan">${col.label}${indicator}</th>`;
+    },
+
+    refreshSortHeaders(panel) {
+      this.sortColumns.forEach((col) => {
+        const th = panel.querySelector(`[data-sort-key="${col.key}"]`);
+        if (!th) return;
+        const active = this.sortState.key === col.key && this.sortState.dir;
+        th.classList.toggle('ha-bw-sort-active', Boolean(active));
+        const indicator =
+          this.sortState.key === col.key
+            ? this.sortState.dir === 'asc'
+              ? ' ↑'
+              : this.sortState.dir === 'desc'
+                ? ' ↓'
+                : ''
+            : '';
+        th.textContent = `${col.label}${indicator}`;
+      });
+    },
+
+    renderTableRows(rows) {
+      if (!rows.length) {
+        return '<tr><td colspan="7" class="ha-bw-empty">Bu ay CRO billable time bulunamadı.</td></tr>';
+      }
+      return rows
+        .map((row) => {
+          const pctClass =
+            row.pct == null
+              ? ''
+              : row.pct >= 100
+                ? 'ha-bw-danger'
+                : row.pct >= 80
+                  ? 'ha-bw-warn'
+                  : 'ha-bw-ok';
+          const remainingClass =
+            row.remaining != null && row.remaining < 0 ? 'ha-bw-danger' : '';
+
+          return `<tr data-project-id="${row.projectId}">
+            <td><strong>${row.brand}</strong><br><small>${row.client}</small></td>
+            <td>${row.department}</td>
+            <td><strong>${row.myWorkedHours} sa</strong></td>
+            <td>${this.formatCell(row.teamWorkedHours, ' sa')}</td>
+            <td class="ha-bw-limit-cell">${this.renderLimitCell(row)}</td>
+            <td class="${remainingClass} ha-bw-remaining">${this.formatCell(row.remaining, ' sa')}</td>
+            <td class="${pctClass} ha-bw-pct">${row.pct != null ? `%${row.pct}` : '—'}</td>
+          </tr>`;
+        })
+        .join('');
+    },
+
     renderLimitCell(row) {
       if (row.limitFromApi && row.limit != null) {
         return `${row.limit} sa`;
@@ -235,6 +348,8 @@
 
     renderPanel(rows) {
       this.remove();
+      this.cachedRows = rows;
+      const displayRows = this.sortRows(rows);
 
       const panel = document.createElement('div');
       panel.id = PANEL_ID;
@@ -258,34 +373,6 @@
       const fmtSummary = (val, suffix = ' sa') =>
         val == null ? '—' : `${Math.round(val * 10) / 10}${suffix}`;
 
-      const tableRows =
-        rows.length === 0
-          ? '<tr><td colspan="7" class="ha-bw-empty">Bu ay CRO billable time bulunamadı.</td></tr>'
-          : rows
-              .map((row) => {
-                const pctClass =
-                  row.pct == null
-                    ? ''
-                    : row.pct >= 100
-                      ? 'ha-bw-danger'
-                      : row.pct >= 80
-                        ? 'ha-bw-warn'
-                        : 'ha-bw-ok';
-                const remainingClass =
-                  row.remaining != null && row.remaining < 0 ? 'ha-bw-danger' : '';
-
-                return `<tr data-project-id="${row.projectId}">
-                  <td><strong>${row.brand}</strong><br><small>${row.client}</small></td>
-                  <td>${row.department}</td>
-                  <td><strong>${row.myWorkedHours} sa</strong></td>
-                  <td>${this.formatCell(row.teamWorkedHours, ' sa')}</td>
-                  <td class="ha-bw-limit-cell">${this.renderLimitCell(row)}</td>
-                  <td class="${remainingClass} ha-bw-remaining">${this.formatCell(row.remaining, ' sa')}</td>
-                  <td class="${pctClass} ha-bw-pct">${row.pct != null ? `%${row.pct}` : '—'}</td>
-                </tr>`;
-              })
-              .join('');
-
       const { startDate, endDate } = this.getMonthRange();
 
       panel.innerHTML = `
@@ -308,16 +395,10 @@
           <table class="ha-bw-table">
             <thead>
               <tr>
-                <th>Marka</th>
-                <th>Departman</th>
-                <th>Senin saatin</th>
-                <th>CRO ekip toplamı</th>
-                <th>CRO limit</th>
-                <th>Kalan (CRO)</th>
-                <th>%</th>
+                ${this.sortColumns.map((col) => this.renderSortableHeader(col)).join('')}
               </tr>
             </thead>
-            <tbody>${tableRows}</tbody>
+            <tbody>${this.renderTableRows(displayRows)}</tbody>
           </table>
         </div>
       `;
@@ -325,9 +406,11 @@
       panel.querySelector('.ha-bw-refresh').addEventListener('click', () => {
         this.cachedProjects = null;
         this.loaded = false;
+        this.sortState = { key: null, dir: null };
         this.ensurePanel(true);
       });
 
+      this.attachSortHandlers(panel);
       this.attachLimitHandlers(panel);
 
       const anchor =
@@ -349,6 +432,19 @@
       if (!this.cachedProjects || !this.cachedWlLimits) return;
       const rows = this.buildRows(this.cachedProjects, this.cachedWlLimits);
       this.renderPanel(rows);
+    },
+
+    attachSortHandlers(panel) {
+      panel.querySelectorAll('.ha-bw-sortable').forEach((th) => {
+        th.addEventListener('click', () => {
+          this.cycleSort(th.dataset.sortKey);
+          const sorted = this.sortRows(this.cachedRows || []);
+          const tbody = panel.querySelector('.ha-bw-table tbody');
+          if (tbody) tbody.innerHTML = this.renderTableRows(sorted);
+          this.refreshSortHeaders(panel);
+          this.attachLimitHandlers(panel);
+        });
+      });
     },
 
     attachLimitHandlers(panel) {
@@ -461,6 +557,13 @@
           text-align: left;
         }
         .ha-bw-table th { background: #f3f2f7; font-weight: 600; }
+        .ha-bw-sortable {
+          cursor: pointer;
+          user-select: none;
+          white-space: nowrap;
+        }
+        .ha-bw-sortable:hover { background: #ebe9f1; }
+        .ha-bw-sort-active { color: #7367f0; }
         .ha-bw-empty { text-align: center; color: #666; padding: 20px; }
         .ha-bw-danger { color: #ea5455; font-weight: 600; }
         .ha-bw-warn { color: #ff9f43; font-weight: 600; }
@@ -508,6 +611,8 @@
         this.cachedWlLimits = wlCache;
 
         const rows = this.buildRows(projects, wlCache);
+        this.sortState = { key: null, dir: null };
+        this.defaultRowOrder = rows.map((r) => r.projectId);
         this.renderPanel(rows);
       } catch (err) {
         console.error('[HyperActive Ext] Brand workload error:', err);
