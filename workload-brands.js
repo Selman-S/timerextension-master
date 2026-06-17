@@ -22,6 +22,7 @@
       { key: 'department', label: 'Departman', type: 'text' },
       { key: 'myWorkedHours', label: 'Senin saatin', type: 'number' },
       { key: 'teamWorkedHours', label: 'CRO ekip toplamı', type: 'number' },
+      { key: 'mySharePct', label: 'Senin payın', type: 'number' },
       { key: 'limit', label: 'CRO limit', type: 'number' },
       { key: 'remaining', label: 'Kalan (CRO)', type: 'number' },
       { key: 'pct', label: '%', type: 'number' },
@@ -206,6 +207,10 @@
         const myWorkedHours = this.toHours(proj.workedMinutes);
         const teamWorkedHours = this.toHours(proj.teamMinutes);
         const { remaining, pct } = this.calcRemainingPct(limit, teamWorkedHours);
+        const mySharePct =
+          teamWorkedHours > 0
+            ? Math.round((myWorkedHours / teamWorkedHours) * 100)
+            : null;
 
         return {
           projectId: proj.projectId,
@@ -214,6 +219,7 @@
           department: proj.department,
           myWorkedHours,
           teamWorkedHours,
+          mySharePct,
           limit,
           limitFromApi: fromApi,
           remaining,
@@ -275,7 +281,7 @@
               ? ' ↓'
               : ''
           : '';
-      return `<th class="ha-bw-sortable ${active ? 'ha-bw-sort-active' : ''}" data-sort-key="${col.key}" title="Sırala: artan / azalan / varsayılan">${col.label}${indicator}</th>`;
+      return `<th class="ha-bw-sortable ${active ? 'ha-bw-sort-active' : ''}" data-sort-key="${col.key}" title="${col.key === 'mySharePct' ? 'Senin saatin ÷ ekip toplamı' : 'Sırala: artan / azalan / varsayılan'}">${col.label}${indicator}</th>`;
     },
 
     refreshSortHeaders(panel) {
@@ -298,7 +304,7 @@
 
     renderTableRows(rows) {
       if (!rows.length) {
-        return '<tr><td colspan="7" class="ha-bw-empty">Bu ay CRO billable time bulunamadı.</td></tr>';
+        return '<tr><td colspan="8" class="ha-bw-empty">Bu ay CRO billable time bulunamadı.</td></tr>';
       }
       return rows
         .map((row) => {
@@ -318,6 +324,7 @@
             <td>${row.department}</td>
             <td><strong>${row.myWorkedHours} sa</strong></td>
             <td>${this.formatCell(row.teamWorkedHours, ' sa')}</td>
+            <td class="ha-bw-share">${row.mySharePct != null ? `%${row.mySharePct}` : '—'}</td>
             <td class="ha-bw-limit-cell">${this.renderLimitCell(row)}</td>
             <td class="${remainingClass} ha-bw-remaining">${this.formatCell(row.remaining, ' sa')}</td>
             <td class="${pctClass} ha-bw-pct">${row.pct != null ? `%${row.pct}` : '—'}</td>
