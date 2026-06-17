@@ -246,10 +246,10 @@
 
       const rowsWithLimit = rows.filter((r) => r.limit != null);
       const totalLimit = rowsWithLimit.reduce((s, r) => s + r.limit, 0);
-      const totalRemaining = rowsWithLimit.reduce(
-        (s, r) => s + (r.remaining ?? 0),
-        0
-      );
+      const totalRemaining =
+        rowsWithLimit.length > 0
+          ? Math.round((totalLimit - totalCroTeam) * 10) / 10
+          : null;
       const overallPct =
         totalLimit > 0
           ? Math.round((totalCroTeam / totalLimit) * 100)

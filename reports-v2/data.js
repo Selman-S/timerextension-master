@@ -450,7 +450,11 @@
           brandCount: new Set(rows.map((r) => r.brand)).size,
           teamTotal: totalCroTeam,
           limitTotal: rowsWithLimit.length ? totalLimit : null,
-          remainingTotal: rowsWithLimit.reduce((s, r) => s + (r.remaining ?? 0), 0),
+          // Portfolio remaining: limit sum minus all dept hours (incl. brands without limit)
+          remainingTotal:
+            rowsWithLimit.length > 0
+              ? Math.round((totalLimit - totalCroTeam) * 10) / 10
+              : null,
           overallPct: totalLimit > 0 ? Math.round((totalCroTeam / totalLimit) * 100) : null,
         },
       };

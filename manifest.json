@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Hyperactive Pro Time Enhancer",
-    "version": "3.6.3",
+    "version": "3.6.4",
     "description": "Mevcut ve geçmiş ayların çalışma saatlerini görüntüler.",
     "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [
