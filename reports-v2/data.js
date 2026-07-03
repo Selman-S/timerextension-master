@@ -9,7 +9,7 @@
     getCurrentUser,
     getMonthRange,
     getYearToDateRange,
-    formatMonthLabel,
+    buildTrendMonths,
     buildTrendPoints,
   } = window.ReportsV2Utils;
 
@@ -37,15 +37,9 @@
       return params;
     },
 
-    // 6 months of personal detailed entries → user trend + brand monthly series
-    async fetchMyMonthlyData(userId) {
-      const offsets = [];
-      for (let i = TREND_MONTH_COUNT - 1; i >= 0; i--) offsets.push(-i);
-      const months = offsets.map((offset) => ({
-        offset,
-        label: formatMonthLabel(offset),
-        ...getMonthRange(offset),
-      }));
+    // Completed calendar months → user trend + brand monthly series (anchored to filter end)
+    async fetchMyMonthlyData(userId, referenceEndDate) {
+      const months = buildTrendMonths(referenceEndDate, TREND_MONTH_COUNT);
 
       const responses = await Promise.all(
         months.map((m) => {
@@ -116,8 +110,9 @@
       });
       const brands = Object.values(brandMap).sort((a, b) => b.minutes - a.minutes);
 
-      const lastChange =
-        userTrendPoints?.length > 0 ? userTrendPoints[userTrendPoints.length - 1].changePct : null;
+      const lastPoint =
+        userTrendPoints?.length > 0 ? userTrendPoints[userTrendPoints.length - 1] : null;
+      const lastChange = lastPoint?.changePct ?? null;
       const optUser = filterOptions?.users?.find((u) => Number(u.id) === uid);
 
       return {
@@ -134,6 +129,7 @@
         brands,
         myTrendPoints: userTrendPoints || [],
         lastMonthChange: lastChange,
+        lastTrendMonthLabel: lastPoint?.label ?? null,
       };
     },
 
@@ -161,7 +157,7 @@
         fetchAPI(`/reports/dashboard?${billableParams}`),
         fetchAPI(`/reports/dashboard?${ytdParams}`),
         fetchAPI(`/reports/detailed?${periodUserParams}`),
-        this.fetchMyMonthlyData(userId),
+        this.fetchMyMonthlyData(userId, leaderboardFilters.endDate),
       ]);
 
       const userLeaderboard = (periodDash.data?.userSummary || [])
@@ -191,15 +187,9 @@
       };
     },
 
-    // Tab: Genel Trend (6 dashboard calls)
+    // Tab: Genel Trend — last N completed calendar months
     async loadTrendsData() {
-      const offsets = [];
-      for (let i = TREND_MONTH_COUNT - 1; i >= 0; i--) offsets.push(-i);
-      const months = offsets.map((offset) => ({
-        offset,
-        label: formatMonthLabel(offset),
-        ...getMonthRange(offset),
-      }));
+      const months = buildTrendMonths(null, TREND_MONTH_COUNT);
 
       const responses = await Promise.all(
         months.map((m) => {
@@ -313,8 +303,8 @@
 
     // Tab: Liderlik (2 API calls; user monthly on demand)
     async loadRankingData() {
-      const { leaderboardFilters } = this.state;
-      const billableParams = this.buildQueryParams(leaderboardFilters, {
+      const { rankingFilters } = this.state;
+      const billableParams = this.buildQueryParams(rankingFilters, {
         billable: 'true',
         limit: '500',
       });
@@ -359,7 +349,7 @@
       if (this.getCacheKey('userTrends') === key && this.getCached('userTrends')) {
         return this.getCached('userTrends');
       }
-      const monthly = await this.fetchMyMonthlyData(userId);
+      const monthly = await this.fetchMyMonthlyData(userId, this.state.leaderboardFilters?.endDate);
       this.setCached('userTrends', key, monthly.userTrendPoints);
       return monthly.userTrendPoints;
     },

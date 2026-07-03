@@ -70,11 +70,11 @@
     // Shared date toolbar for leaderboard + brands tabs
     renderGlobalToolbar() {
       if (this.state.activeTab === 'explore') return '';
-      const { leaderboardFilters } = this.state;
+      const periodFilters = this.getPeriodFilters();
       const thisMonth = getMonthRange(0);
       const lastMonth = getMonthRange(-1);
-      const isThisMonth = isSameDateRange(leaderboardFilters, thisMonth);
-      const isLastMonth = isSameDateRange(leaderboardFilters, lastMonth);
+      const isThisMonth = isSameDateRange(periodFilters, thisMonth);
+      const isLastMonth = isSameDateRange(periodFilters, lastMonth);
 
       return `
         <div class="rv2-toolbar">
@@ -86,9 +86,9 @@
             </div>
             <span class="rv2-toolbar-divider" aria-hidden="true"></span>
             <div class="rv2-date-range">
-              <input type="date" id="lb-start" value="${leaderboardFilters.startDate}" class="form-control rv2-date-input" aria-label="Başlangıç">
+              <input type="date" id="lb-start" value="${periodFilters.startDate}" class="form-control rv2-date-input" aria-label="Başlangıç">
               <span class="rv2-date-sep">→</span>
-              <input type="date" id="lb-end" value="${leaderboardFilters.endDate}" class="form-control rv2-date-input" aria-label="Bitiş">
+              <input type="date" id="lb-end" value="${periodFilters.endDate}" class="form-control rv2-date-input" aria-label="Bitiş">
               <button type="button" id="lb-apply" class="btn btn-primary rv2-apply-btn">Uygula</button>
             </div>
           </div>

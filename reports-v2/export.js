@@ -27,7 +27,7 @@
 
       let csvData = [];
       let filename = '';
-      const { dashboardData, detailedData, leaderboardFilters, exploreFilters } = this.state;
+      const { dashboardData, detailedData, leaderboardFilters, rankingFilters, exploreFilters } = this.state;
       const departmentsData = this.getCached('departments');
       const rankingData = this.getCached('ranking');
       const brandsData = this.getCached('brands');
@@ -52,7 +52,7 @@
             Hours: convertMinutesToDecimalHours(u.totalMinutes),
             Clients: u.clientCount,
           }));
-          filename = `leaderboard-users-${leaderboardFilters.startDate}.csv`;
+          filename = `leaderboard-users-${rankingFilters.startDate}.csv`;
           break;
         case 'lb-avg':
           csvData = (departmentsData?.departments || []).map((d) => ({

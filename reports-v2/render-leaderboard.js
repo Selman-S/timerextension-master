@@ -16,38 +16,32 @@
 
   const loadingBlock = () => '<p class="rv2-empty">Veri yükleniyor…</p>';
 
-  const personalTrendInsight = (points) => {
+  const averageTrendInsight = (points, subject = 'Billable') => {
     if (!points?.length) return '';
     const last = points[points.length - 1];
-    if (last.changePct == null) return 'Son 6 ayın billable trendi.';
-    const dir = last.changePct > 0 ? 'artış' : last.changePct < 0 ? 'düşüş' : 'değişim yok';
-    return `Geçen aya göre %${Math.abs(last.changePct)} ${dir} gösterdin.`;
+    if (last.changePct == null) return `Son ${points.length} tam ayın ${subject.toLowerCase()} trendi.`;
+    const dir = last.changePct > 0 ? 'üzerinde' : last.changePct < 0 ? 'altında' : 'ortalama seviyede';
+    const priorCount = points.length - 1;
+    if (last.changePct === 0) {
+      return `${last.label}: önceki ${priorCount} ay ortalamasıyla aynı seviyede (${subject}).`;
+    }
+    return `${last.label}: önceki ${priorCount} ay ortalamasının %${Math.abs(last.changePct)} ${dir} (${subject}).`;
   };
 
-  const totalTrendInsight = (points) => {
-    if (!points?.length) return '';
-    const last = points[points.length - 1];
-    if (last.changePct == null) return 'Son 6 ayın billable trendi.';
-    const dir = last.changePct > 0 ? 'artış' : last.changePct < 0 ? 'düşüş' : 'değişim yok';
-    return `Geçen aya göre toplam billable %${Math.abs(last.changePct)} ${dir} gösterdi.`;
-  };
+  const personalTrendInsight = (points) => averageTrendInsight(points, 'Senin billable performansın');
+
+  const totalTrendInsight = (points) => averageTrendInsight(points, 'Toplam billable');
 
   const singleDeptTrendInsight = (dept, months) => {
     if (!dept || !months?.length) return '';
     const points = buildTrendPoints(dept.values, months.map((m) => m.label));
-    const last = points[points.length - 1];
-    if (last.changePct == null) return `${dept.name} için son 6 ayın billable trendi.`;
-    const dir = last.changePct > 0 ? 'artış' : last.changePct < 0 ? 'düşüş' : 'değişim yok';
-    return `${dept.name} geçen aya göre %${Math.abs(last.changePct)} ${dir} gösterdi.`;
+    return averageTrendInsight(points, dept.name);
   };
 
   const brandTrendInsight = (brand, months) => {
     if (!brand || !months?.length) return '';
     const points = buildTrendPoints(brand.values, months.map((m) => m.label));
-    const last = points[points.length - 1];
-    if (last.changePct == null) return `${brand.name} markasında son 6 ayın trendi.`;
-    const dir = last.changePct > 0 ? 'artış' : last.changePct < 0 ? 'düşüş' : 'değişim yok';
-    return `${brand.name} markasında geçen aya göre %${Math.abs(last.changePct)} ${dir}.`;
+    return averageTrendInsight(points, brand.name);
   };
 
   window.ReportsV2RenderLeaderboard = {
@@ -127,11 +121,11 @@
               <div class="stat-label">/${personal.ytdTotal} kişi · ${formatMinutesReadable(personal.ytdMinutes)}</div>
             </div>
             <div class="stat-card">
-              <div class="stat-card-top"><span class="stat-label">Son Ay Değişimin</span></div>
+              <div class="stat-card-top"><span class="stat-label">Son Tam Ay Değişimin</span></div>
               <div class="stat-number ${personal.lastMonthChange > 0 ? 'rv2-ok' : personal.lastMonthChange < 0 ? 'rv2-danger' : ''}">
                 ${personal.lastMonthChange != null ? `${personal.lastMonthChange > 0 ? '+' : ''}${personal.lastMonthChange}%` : '—'}
               </div>
-              <div class="stat-label">geçen aya göre</div>
+              <div class="stat-label">${personal.lastTrendMonthLabel ? `${personal.lastTrendMonthLabel} · ` : ''}önceki aylara göre ortalama</div>
             </div>
           </div>
 
@@ -139,7 +133,7 @@
             <div class="table-card">
               <div class="table-header">
                 <h4>Aylık Billable Trendin</h4>
-                <span class="rv2-hint">Son 6 ay</span>
+                <span class="rv2-hint">Son ${personal.myTrendPoints?.length || 6} tam ay · döneme göre</span>
               </div>
               <div class="table-card-body-padded">
                 ${C()?.queueLineChart(personal.myTrendPoints, {
@@ -172,7 +166,7 @@
             <div class="table-card rv2-personal-brands">
               <div class="table-header">
                 <h4>Markaların — Aylık Trend</h4>
-                <span class="rv2-hint">Marka seç</span>
+                <span class="rv2-hint">Tam aylar · ortalamaya göre %</span>
               </div>
               <div class="table-card-body-padded">
                 ${renderBrandTrendTabs(brandMonthlyTrends.months, brandSeries, activeBrandId)}
@@ -204,7 +198,7 @@
           <div class="table-card">
             <div class="table-header">
               <h4>Toplam Billable — Aylık Trend</h4>
-              <span class="rv2-hint">Son ${data.months?.length || 6} ay</span>
+              <span class="rv2-hint">Son ${data.months?.length || 6} tam ay</span>
             </div>
             <div class="table-card-body-padded">
               ${C()?.queueLineChart(data.total || [], { label: 'Toplam', color: '#6366f1', idPrefix: 'total-trend' }) || '<p class="rv2-empty">Grafik yüklenemedi</p>'}
@@ -215,7 +209,7 @@
           <div class="table-card">
             <div class="table-header">
               <h4>Departman Dağılımı</h4>
-              <span class="rv2-hint">Son ay billable</span>
+              <span class="rv2-hint">Son tam ay billable</span>
             </div>
             <div class="table-card-body-padded">
               ${C()?.queuePieChart(deptPieItems, { idPrefix: 'dept-pie-trends' }) || '<p class="rv2-empty">Grafik yüklenemedi</p>'}

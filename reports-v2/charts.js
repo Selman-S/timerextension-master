@@ -38,7 +38,7 @@
             const pts = ctx.chart.$rv2Points;
             const change = pts?.[ctx.dataIndex]?.changePct;
             if (change == null) return '';
-            return `Değişim: ${change > 0 ? '+' : ''}${change}%`;
+            return `Ortalamaya göre: ${change > 0 ? '+' : ''}${change}%`;
           },
         },
       },

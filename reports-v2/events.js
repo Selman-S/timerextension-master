@@ -19,17 +19,17 @@
       });
 
       document.getElementById('lb-apply')?.addEventListener('click', async () => {
-        this.state.leaderboardFilters = {
+        this.setPeriodFilters({
           startDate: document.getElementById('lb-start')?.value,
           endDate: document.getElementById('lb-end')?.value,
-        };
+        });
         await this.reloadActiveTab();
       });
 
       document.querySelectorAll('[data-lb-preset]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const offset = Number(btn.dataset.lbPreset);
-          this.state.leaderboardFilters = getMonthRange(offset);
+          this.setPeriodFilters(getMonthRange(offset));
           await this.reloadActiveTab();
         });
       });
@@ -125,7 +125,7 @@
 
       document.getElementById('clear-filters')?.addEventListener('click', async () => {
         this.state.exploreFilters = {
-          ...getMonthRange(0),
+          ...getMonthRange(-1),
           userId: null,
           clientId: null,
           projectId: null,

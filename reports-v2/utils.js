@@ -168,16 +168,51 @@
     return `${MONTH_NAMES_TR[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
   };
 
-  // Attach MoM change % to each point in a time series
+  // Offsets for N completed months ending at filter end (skips partial current month)
+  const getTrendMonthOffsets = (endDateStr, count = window.ReportsV2Constants.TREND_MONTH_COUNT) => {
+    const now = new Date();
+    const ref = endDateStr ? new Date(`${endDateStr}T12:00:00`) : now;
+    const todayMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const refMonth = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    const monthsFromToday =
+      (refMonth.getFullYear() - todayMonth.getFullYear()) * 12 +
+      (refMonth.getMonth() - todayMonth.getMonth());
+    const lastDayOfRefMonth = new Date(ref.getFullYear(), ref.getMonth() + 1, 0).getDate();
+    const isRefMonthComplete = ref.getDate() >= lastDayOfRefMonth;
+    const isRefCurrentMonth = monthsFromToday === 0;
+
+    let lastOffsetFromToday = monthsFromToday;
+    if (isRefCurrentMonth && !isRefMonthComplete) {
+      lastOffsetFromToday = -1;
+    }
+
+    const offsets = [];
+    for (let i = count - 1; i >= 0; i--) offsets.push(lastOffsetFromToday - i);
+    return offsets;
+  };
+
+  const buildTrendMonths = (endDateStr, count = window.ReportsV2Constants.TREND_MONTH_COUNT) =>
+    getTrendMonthOffsets(endDateStr, count).map((offset) => ({
+      offset,
+      label: formatMonthLabel(offset),
+      ...getMonthRange(offset),
+    }));
+
+  // % change vs average of all prior months in the series (not raw MoM)
+  const calcAvgPriorChangePct = (value, priorValues) => {
+    if (!priorValues?.length) return null;
+    const avg = priorValues.reduce((s, v) => s + v, 0) / priorValues.length;
+    if (avg === 0) return value > 0 ? 100 : 0;
+    return Math.round(((value - avg) / avg) * 100);
+  };
+
+  // Attach average-based change % to each point in a time series
   const buildTrendPoints = (values, labels) =>
     values.map((value, i) => {
-      const prev = i > 0 ? values[i - 1] : null;
-      let changePct = null;
-      if (prev != null) {
-        if (prev === 0) changePct = value > 0 ? 100 : 0;
-        else changePct = Math.round(((value - prev) / prev) * 100);
-      }
-      return { label: labels[i], value: Number(value) || 0, changePct };
+      const numValue = Number(value) || 0;
+      const prior = values.slice(0, i).map((v) => Number(v) || 0);
+      const changePct = i > 0 ? calcAvgPriorChangePct(numValue, prior) : null;
+      return { label: labels[i], value: numValue, changePct };
     });
 
   // Generic tabbed monthly trend (departments or brands) — line chart via Chart.js
@@ -196,13 +231,15 @@
     const color = C?.seriesColor(colorIdx) || '#6366f1';
 
     const tabSecondary = (s) => {
-      const vals = s.values;
-      const last = vals[vals.length - 1] || 0;
+      const points = buildTrendPoints(s.values, labels);
+      const lastPoint = points[points.length - 1];
       if (tabMetric === 'hours') {
-        return `<span class="rv2-dept-tab-metric">${formatMinutesReadable(last)}</span>`;
+        return `<span class="rv2-dept-tab-metric">${formatMinutesReadable(lastPoint.value)}</span>`;
       }
-      const prev = vals[vals.length - 2] || 0;
-      const change = prev === 0 ? (last > 0 ? 100 : 0) : Math.round(((last - prev) / prev) * 100);
+      if (lastPoint.changePct == null) {
+        return `<span class="rv2-dept-tab-metric">${formatMinutesReadable(lastPoint.value)}</span>`;
+      }
+      const change = lastPoint.changePct;
       const chCls = change >= 0 ? 'rv2-chart-change-up' : 'rv2-chart-change-down';
       return `<span class="rv2-dept-tab-change ${chCls}">${change >= 0 ? '+' : ''}${change}%</span>`;
     };
@@ -238,7 +275,7 @@
     renderTrendTabs(months, series, activeBrandId, {
       dataAttr: 'brand-id',
       tabClass: 'rv2-brand-tab',
-      tabMetric: 'hours',
+      tabMetric: 'change',
       chartId: 'rv2-chart-brand-trend',
       colorizeTabs: true,
     });
@@ -260,6 +297,9 @@
     getCurrentUser,
     toHours,
     formatMonthLabel,
+    getTrendMonthOffsets,
+    buildTrendMonths,
+    calcAvgPriorChangePct,
     buildTrendPoints,
     renderDeptTrendTabs,
     renderBrandTrendTabs,

@@ -19,7 +19,8 @@
     state: {
       loading: false,
       activeTab: 'personal',
-      leaderboardFilters: getMonthRange(0),
+      leaderboardFilters: getMonthRange(-1),
+      rankingFilters: getMonthRange(0),
       dataCache: emptyCache(),
       selectedTrendDeptId: null,
       selectedTrendUserId: null,
@@ -29,7 +30,7 @@
       teamsWithMembers: [],
       filterOptions: { users: [], clients: [], projects: [], departments: [], teams: [] },
       exploreFilters: {
-        ...getMonthRange(0),
+        ...getMonthRange(-1),
         userId: null,
         clientId: null,
         projectId: null,
@@ -38,6 +39,19 @@
         titleId: null,
         billable: 'true',
       },
+    },
+
+    // Period filters: ranking tab defaults to current month, others to last month
+    getPeriodFilters(tab = this.state.activeTab) {
+      return tab === 'ranking' ? this.state.rankingFilters : this.state.leaderboardFilters;
+    },
+
+    setPeriodFilters(range, tab = this.state.activeTab) {
+      if (tab === 'ranking') {
+        this.state.rankingFilters = range;
+      } else {
+        this.state.leaderboardFilters = range;
+      }
     },
 
     async init() {
@@ -88,9 +102,10 @@
           return;
         }
         case 'ranking': {
-          if (this.getCacheKey('ranking') === fKey && this.getCached('ranking')) return;
+          const rKey = this.cacheKey(this.state.rankingFilters);
+          if (this.getCacheKey('ranking') === rKey && this.getCached('ranking')) return;
           const data = await this.loadRankingData();
-          this.setCached('ranking', fKey, data);
+          this.setCached('ranking', rKey, data);
           return;
         }
         case 'brands': {
