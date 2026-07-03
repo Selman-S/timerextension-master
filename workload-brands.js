@@ -420,15 +420,16 @@
       this.attachSortHandlers(panel);
       this.attachLimitHandlers(panel);
 
+      // Insert above service table; native page already has summary + charts
       const anchor =
-        document.querySelector('.dataTable-custom') ||
-        document.querySelector('header.sc-gFqAkR') ||
+        document.querySelector('.workload-table-card') ||
+        document.querySelector('.workload-page .card') ||
         document.querySelector('.card-body');
 
       if (anchor?.parentNode) {
         anchor.parentNode.insertBefore(panel, anchor);
       } else {
-        document.body.prepend(panel);
+        document.querySelector('.workload-page')?.append(panel) || document.body.prepend(panel);
       }
 
       this.loaded = true;
@@ -473,8 +474,11 @@
       panel.className = 'ha-brands-workload-panel ha-bw-loading';
       panel.innerHTML =
         '<div class="ha-bw-header"><h4 class="ha-bw-title">Markalarım — Workload</h4></div><p>Yükleniyor…</p>';
-      const anchor = document.querySelector('.card-body') || document.body;
-      anchor.prepend(panel);
+      const page = document.querySelector('.workload-page');
+      const anchor = page || document.body;
+      page
+        ? anchor.insertBefore(panel, anchor.querySelector('.workload-table-card') || null)
+        : anchor.prepend(panel);
     },
 
     renderError(message) {
@@ -494,8 +498,11 @@
         this.loaded = false;
         this.ensurePanel(true);
       });
-      const anchor = document.querySelector('.card-body') || document.body;
-      anchor.prepend(panel);
+      const page = document.querySelector('.workload-page');
+      const anchor = page || document.body;
+      page
+        ? anchor.insertBefore(panel, anchor.querySelector('.workload-table-card') || null)
+        : anchor.prepend(panel);
     },
 
     remove() {

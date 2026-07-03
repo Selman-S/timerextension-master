@@ -93,7 +93,7 @@ Extension yüklendikten sonra kontrol edin:
 - [ ] Queue butonuna tıklayınca panel açılıyor
 - [ ] Time sayfasında bilgi kutusu ve grafik ikonu var
 - [ ] Sol menüde "Reports" linki var
-- [ ] Workload sayfasında çalışılan saat bilgileri gösteriliyor
+- [ ] Workload sayfasında "Markalarım — Workload" paneli görünüyor
 
 ## Geliştirme Notları
 

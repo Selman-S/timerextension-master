@@ -6,8 +6,6 @@
   const CHART_ICON_ID = 'hyperactive-time-chart-icon';
   const CHART_MODAL_ID = 'hyperactive-time-chart-modal';
   const CHART_CANVAS_ID = 'hyperactive-time-chart-canvas';
-  const WORKLOAD_INFO_ID = 'hyperactive-workload-info';
-  const WORKLOAD_REFRESH_BTN_ID = 'hyperactive-workload-refresh-btn';
   const REPORTS_LINK_ID = 'hyperactive-reports-link';
 
   // Interval Süresi (ms)
@@ -429,238 +427,6 @@
     }
   };
 
-  // Workload Sayfası İçin Fonksiyonlar
-  const calculateWorkedHours = () => {
-    const rows = document.querySelectorAll('.rdt_TableRow');
-    let totalWorkedHours = 0;
-    let totalServiceLimit = 0;
-    let totalRemainingTime = 0;
-    
-    // Önce tüm mevcut çalışılan süre bilgilerini temizle
-    const existingElements = document.querySelectorAll('.worked-hours-info');
-    existingElements.forEach(element => {
-      if (element.parentNode) {
-        element.parentNode.removeChild(element);
-      }
-    });
-    
-    // Tablo başlığına "Çalışılan" bilgisi ekle
-    const headerRow = document.querySelector('.rdt_TableHeadRow');
-    if (headerRow) {
-      // Actual column ID in DOM uses arrow function shorthand, not full function syntax
-      const remainingTimeHeader = headerRow.querySelector('[id="column-s=>s.remainingTime"]');
-      if (remainingTimeHeader && !remainingTimeHeader.querySelector('.worked-hours-header')) {
-        const headerText = remainingTimeHeader.querySelector('div');
-        if (headerText) {
-          const originalText = headerText.textContent;
-          headerText.innerHTML = `${originalText} <span class="worked-hours-header" style="font-size: 12px; opacity: 0.8;">(Çalışılan)</span>`;
-        }
-      }
-    }
-    
-    rows.forEach(row => {
-      // Tüm hücreleri al
-      const cells = row.querySelectorAll('.rdt_TableCell');
-      
-      // Hücrelerin içeriğini kontrol et
-      if (cells.length >= 6) {
-        // Service Limits (3. hücre)
-        const serviceLimitCell = cells[2];
-        // Remaining Time (6. hücre)
-        const remainingTimeCell = cells[5];
-        
-        if (serviceLimitCell && remainingTimeCell) {
-          try {
-            // Sadece sayısal değeri almak için textContent'i temizle
-            const serviceLimitText = serviceLimitCell.textContent.trim();
-            const remainingTimeText = remainingTimeCell.textContent.trim();
-            
-            // Sayısal değerleri çıkar - regex ile sayıları bul
-            const serviceLimitMatch = serviceLimitText.match(/\d+/);
-            
-            // Kalan süre için negatif değerleri de kontrol et
-            const isNegativeRemaining = remainingTimeText.includes('-');
-            const remainingTimeMatch = remainingTimeText.match(/\d+/);
-            
-            if (serviceLimitMatch && remainingTimeMatch) {
-              const serviceLimit = parseInt(serviceLimitMatch[0], 10);
-              let remainingTime = parseInt(remainingTimeMatch[0], 10);
-              
-              // Eğer kalan süre negatifse, değeri negatif yap
-              if (isNegativeRemaining) {
-                remainingTime = -remainingTime;
-              }
-              
-              const workedHours = serviceLimit - remainingTime;
-              
-              // Toplamları güncelle
-              totalServiceLimit += serviceLimit;
-              totalRemainingTime += remainingTime;
-              totalWorkedHours += workedHours;
-              
-              // Çalışılan süreyi kalan süre hücresine ekle
-              const workedHoursElement = document.createElement('span');
-              workedHoursElement.className = 'worked-hours-info';
-              
-              // Stil ayarları
-              if (remainingTime < 0) {
-                workedHoursElement.style.color = '#e83e8c'; // Pembe renk
-              } else {
-                workedHoursElement.style.color = '#4839eb'; // Mavi renk
-              }
-              
-              workedHoursElement.style.marginLeft = '5px';
-              workedHoursElement.style.fontSize = '12px';
-              workedHoursElement.textContent = `(${workedHours})`;
-              
-              // Kalan süre hücresindeki bold elementi bul
-              const boldElement = remainingTimeCell.querySelector('b');
-              if (boldElement) {
-                boldElement.appendChild(workedHoursElement);
-              } else {
-                remainingTimeCell.appendChild(workedHoursElement);
-              }
-            }
-          } catch (error) {
-            // Hata durumunda sessizce devam et
-          }
-        }
-      }
-    });
-    
-    return {
-      totalWorkedHours,
-      totalServiceLimit,
-      totalRemainingTime
-    };
-  };
-
-  const addWorkloadInfo = () => {
-    // Eğer zaten varsa kaldır
-    removeWorkloadInfo();
-    
-    // Toplam çalışılan süreyi hesapla
-    const { totalWorkedHours, totalServiceLimit, totalRemainingTime } = calculateWorkedHours();
-    
-    // Bilgi kutusunu oluştur
-    const infoContainer = document.createElement('div');
-    infoContainer.id = WORKLOAD_INFO_ID;
-    infoContainer.style.padding = '15px';
-    infoContainer.style.margin = '10px 0';
-    infoContainer.style.backgroundColor = '#f8f8f8';
-    infoContainer.style.borderRadius = '5px';
-    infoContainer.style.border = '1px solid #e0e0e0';
-    infoContainer.style.color = '#333';
-    infoContainer.style.fontWeight = 'bold';
-    infoContainer.style.fontSize = '16px';
-    
-    // Bilgi içeriği için container
-    const contentContainer = document.createElement('div');
-    contentContainer.style.display = 'flex';
-    contentContainer.style.justifyContent = 'space-between';
-    contentContainer.style.alignItems = 'center';
-    contentContainer.style.flexWrap = 'wrap';
-    contentContainer.style.gap = '15px';
-    
-    // Tamamlanma yüzdesi
-    const completionRate = Math.round((totalWorkedHours / totalServiceLimit) * 100);
-    
-    // Bilgi kartları
-    const createInfoCard = (title, value, color, icon = null) => {
-      const card = document.createElement('div');
-      card.style.padding = '10px 15px';
-      card.style.borderRadius = '4px';
-      card.style.backgroundColor = 'white';
-      card.style.border = `1px solid ${color}`;
-      card.style.minWidth = '180px';
-      card.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
-      
-      const titleElement = document.createElement('div');
-      titleElement.style.fontSize = '12px';
-      titleElement.style.color = '#666';
-      titleElement.style.marginBottom = '5px';
-      titleElement.textContent = title;
-      
-      const valueElement = document.createElement('div');
-      valueElement.style.fontSize = '18px';
-      valueElement.style.color = color;
-      valueElement.style.fontWeight = 'bold';
-      valueElement.textContent = value;
-      
-      card.appendChild(titleElement);
-      card.appendChild(valueElement);
-      
-      return card;
-    };
-    
-    // Toplam çalışılan süre kartı
-    const workedHoursCard = createInfoCard('Toplam Çalışılan Süre', `${totalWorkedHours} saat`, '#4839eb');
-    
-    // Toplam limit kartı
-    const limitCard = createInfoCard('Toplam Limit', `${totalServiceLimit} saat`, '#28a745');
-    
-    // Toplam kalan süre kartı - renk ve mesaj duruma göre değişir
-    let remainingColor = '#17a2b8'; // Varsayılan mavi
-    let remainingText = `${totalRemainingTime} saat`;
-    
-    if (totalRemainingTime < 0) {
-      remainingColor = '#e83e8c'; // Pembe
-      remainingText = `${totalRemainingTime} saat (Hedefin üzerinde)`;
-    }
-    
-    const remainingCard = createInfoCard('Toplam Kalan Süre', remainingText, remainingColor);
-    
-    // Tamamlanma yüzdesi kartı
-    let completionColor = '#17a2b8'; // Varsayılan mavi
-    
-    if (completionRate >= 100) {
-      completionColor = '#28a745'; // Yeşil
-    } else if (completionRate >= 75) {
-      completionColor = '#ffc107'; // Sarı
-    } else if (completionRate >= 50) {
-      completionColor = '#fd7e14'; // Turuncu
-    } else {
-      completionColor = '#dc3545'; // Kırmızı
-    }
-    
-    const completionCard = createInfoCard('Tamamlanma Oranı', `%${completionRate}`, completionColor);
-    
-    // Kartları container'a ekle
-    contentContainer.appendChild(workedHoursCard);
-    contentContainer.appendChild(limitCard);
-    contentContainer.appendChild(remainingCard);
-    contentContainer.appendChild(completionCard);
-    
-    infoContainer.appendChild(contentContainer);
-    
-    // Insert above the data table — use stable custom class or header element as anchor
-    const anchor = document.querySelector('.dataTable-custom') || document.querySelector('header.sc-gFqAkR');
-    if (anchor && anchor.parentNode) {
-      anchor.parentNode.insertBefore(infoContainer, anchor);
-    } else {
-      // Fallback: append to card-body
-      const cardBody = document.querySelector('.card-body');
-      if (cardBody) cardBody.prepend(infoContainer);
-      console.warn('[HyperActive Ext] Workload anchor not found, fallback used.');
-    }
-  };
-
-  const removeWorkloadInfo = () => {
-    // Bilgi kutusunu kaldır
-    const infoContainer = document.getElementById(WORKLOAD_INFO_ID);
-    if (infoContainer && infoContainer.parentNode) {
-      infoContainer.parentNode.removeChild(infoContainer);
-    }
-    
-    // Satır sonlarındaki çalışılan süre bilgilerini kaldır
-    const workedHoursElements = document.querySelectorAll('.worked-hours-info');
-    workedHoursElements.forEach(element => {
-      if (element.parentNode) {
-        element.parentNode.removeChild(element);
-      }
-    });
-  };
-
   // Add Reports link to navbar
   const addReportsLink = () => {
     // Check if Reports link already exists
@@ -761,7 +527,6 @@
     if (isReportsV2Page) {
       // ReportsV2Manager.init() reports-v2/bootstrap.js'de çağrılıyor
       removeInfoContainer();
-      removeWorkloadInfo();
       if (window.WorkloadBrands) window.WorkloadBrands.remove();
     }
     // Time sayfasında
@@ -769,22 +534,18 @@
       if (!document.getElementById(INFO_CONTAINER_ID)) {
         addInfoContainer();
       }
-      removeWorkloadInfo();
       if (window.WorkloadBrands) window.WorkloadBrands.remove();
-    } 
-    // Workload sayfasında
+    }
+    // Workload sayfasında — native KPI/grafikler + extension Markalarım paneli
     else if (isWorkloadPage) {
       removeInfoContainer();
-      addWorkloadInfo();
-      // Brand-responsible panel (extension-only API fetch)
       if (window.WorkloadBrands) {
         window.WorkloadBrands.ensurePanel();
       }
-    } 
+    }
     // Diğer sayfalarda
     else {
       removeInfoContainer();
-      removeWorkloadInfo();
       if (window.WorkloadBrands) window.WorkloadBrands.remove();
     }
   };
