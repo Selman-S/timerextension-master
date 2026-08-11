@@ -102,7 +102,7 @@
   // Initialize when DOM is ready (only on /time page)
   const initQueue = (showNotification = false) => {
     // Only show queue on /time page
-    if (window.location.href.includes('/time')) {
+    if (window.location.pathname === '/time') {
       window.QueueManager.init();
       UIManager.init(showNotification);
     }
@@ -122,7 +122,7 @@
     const currentUrl = window.location.href;
     const urlChanged = currentUrl !== lastUrl;
     const queueBtn = document.getElementById('queue-floating-btn');
-    const isTimePage = currentUrl.includes('/time');
+    const isTimePage = window.location.pathname === '/time';
     
     if (isTimePage && !queueBtn) {
       // On time page but queue not initialized

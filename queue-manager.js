@@ -10,7 +10,8 @@
   
   const CONFIG = {
     TIMER_LIMIT: 180,                   // Max 180 minutes (3 hours) per timer
-    DAILY_LIMIT: 680,                   // 8 hours daily limit
+    DAILY_LIMIT_WEEKDAY: 600,           // Backend weekday cap (minutes)
+    DAILY_LIMIT_SATURDAY: 240,          // Backend Saturday cap (minutes)
     CHECK_INTERVAL: 5000,               // Check running timer every 5s
     SAVE_INTERVAL: 30000,               // Save to storage every 30s
     API_RETRY_MAX: 3,                   // Max retry for API calls
@@ -92,6 +93,10 @@
              d1.getMonth() === d2.getMonth() &&
              d1.getDate() === d2.getDate();
     },
+
+    // Match backend daily caps: 600 min weekdays, 240 min Saturday
+    getDailyLimitMinutes: (date = new Date()) =>
+      date.getDay() === 6 ? CONFIG.DAILY_LIMIT_SATURDAY : CONFIG.DAILY_LIMIT_WEEKDAY,
   };
 
   // ============================================================================
@@ -168,7 +173,7 @@
         totalPlanned: 0,
         totalCompleted: 0,
         totalRemaining: 0,
-        dailyLimit: CONFIG.DAILY_LIMIT,
+        dailyLimit: Utils.getDailyLimitMinutes(),
         dailyUsed: 0,
       });
       

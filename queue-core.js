@@ -95,7 +95,7 @@
         sum + (item.status === 'pending' ? item.totalDuration : 0), 0
       );
 
-      if (dailyTotal + queueTotal > CONFIG.DAILY_LIMIT) {
+      if (dailyTotal + queueTotal > Utils.getDailyLimitMinutes()) {
         await NotificationManager.add('error', 
           `Günlük limit aşımı! Mevcut: ${Utils.formatMinutes(dailyTotal)}, Queue: ${Utils.formatMinutes(queueTotal)}`
         );

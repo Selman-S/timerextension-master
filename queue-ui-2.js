@@ -452,9 +452,10 @@
 
       // Check daily limit
       const dailyStats = await window.StorageManager.get(window.STORAGE_KEYS.DAILY_STATS);
-      if (dailyStats.dailyUsed + duration > window.CONFIG.DAILY_LIMIT) {
+      const dailyLimit = window.Utils.getDailyLimitMinutes();
+      if (dailyStats.dailyUsed + duration > dailyLimit) {
         await window.NotificationManager.add('error', 
-          `Günlük limit aşımı! Eklenebilecek maksimum: ${window.Utils.formatMinutes(window.CONFIG.DAILY_LIMIT - dailyStats.dailyUsed)}`
+          `Günlük limit aşımı! Eklenebilecek maksimum: ${window.Utils.formatMinutes(dailyLimit - dailyStats.dailyUsed)}`
         );
         return;
       }
