@@ -271,9 +271,12 @@
       #${PANEL_ID} .mp-chart-body {
         display: none;
         padding: 6px 0 2px;
+        height: 300px;
+        box-sizing: border-box;
       }
       #${PANEL_ID} .mp-chart-wrap.is-open .mp-chart-body {
-        display: block;
+        display: flex;
+        flex-direction: column;
       }
       #${PANEL_ID} .mp-chart-head {
         display: flex;
@@ -304,7 +307,9 @@
       }
       #${PANEL_ID} .mp-svg {
         width: 100%;
-        height: 168px;
+        flex: 1;
+        min-height: 0;
+        height: 100%;
         display: block;
       }
       #${PANEL_ID} .mp-chart-note {
@@ -355,7 +360,7 @@
 
   const buildSvgChart = (months, values, avgMinutes) => {
     const w = 720;
-    const h = 168;
+    const h = 260;
     const padL = 36;
     const padR = 52;
     const padT = 22;
