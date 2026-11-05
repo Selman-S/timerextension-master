@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Hyperactive Pro Time Enhancer",
-  "version": "4.3.1",
-  "description": "Time queue, pulse ve Selman için planlı/2saat otomatik stop + kalan süre.",
+  "version": "4.6.1",
+  "description": "Pulse. Süre timer penceresinden sıraya eklenir; ayri queue penceresi yok.",
   "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [
     {
@@ -10,10 +10,6 @@
       "js": [
         "queue-manager.js",
         "queue-core.js",
-        "queue-ui-1.js",
-        "queue-ui-2.js",
-        "queue-ui-3.js",
-        "queue-ui.js",
         "my-pulse.js",
         "auto-stop.js"
       ]

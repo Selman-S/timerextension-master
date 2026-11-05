@@ -15,25 +15,29 @@
       
       // Update floating button badge
       const pendingCount = data.queue.filter(item => item.status === 'pending' || item.status === 'running').length;
-      const badge = elements.floatingBtn.querySelector('.queue-badge');
-      badge.textContent = pendingCount;
-      badge.style.display = pendingCount > 0 ? 'block' : 'none';
+      const badge = elements.floatingBtn?.querySelector('.queue-badge');
+      if (badge) {
+        badge.textContent = pendingCount;
+        badge.style.display = pendingCount > 0 ? 'block' : 'none';
+      }
 
       // Update control buttons
       const startBtn = document.getElementById('queue-start-btn');
       const pauseBtn = document.getElementById('queue-pause-btn');
       const stopBtn = document.getElementById('queue-stop-btn');
 
-      if (data.queueState.isRunning) {
-        startBtn.disabled = true;
-        pauseBtn.disabled = false;
-        stopBtn.disabled = false;
-        pauseBtn.innerHTML = data.queueState.isPaused ? '▶️' : '⏸️';
-        pauseBtn.title = data.queueState.isPaused ? 'Resume Queue' : 'Pause Queue';
-      } else {
-        startBtn.disabled = pendingCount === 0;
-        pauseBtn.disabled = true;
-        stopBtn.disabled = true;
+      if (startBtn && pauseBtn && stopBtn) {
+        if (data.queueState.isRunning) {
+          startBtn.disabled = true;
+          pauseBtn.disabled = false;
+          stopBtn.disabled = false;
+          pauseBtn.innerHTML = data.queueState.isPaused ? '▶' : '⏸';
+          pauseBtn.title = data.queueState.isPaused ? 'Resume Queue' : 'Pause Queue';
+        } else {
+          startBtn.disabled = pendingCount === 0;
+          pauseBtn.disabled = true;
+          stopBtn.disabled = true;
+        }
       }
 
       // Update stats
@@ -46,6 +50,7 @@
     // Update stats section
     updateStats: (data) => {
       const statsContainer = document.getElementById('queue-stats');
+      if (!statsContainer) return;
       const totalPlanned = data.dailyStats.totalPlanned;
       const totalCompleted = data.dailyStats.totalCompleted;
       const dailyUsed = data.dailyStats.dailyUsed;
@@ -79,6 +84,7 @@
     updateQueueList: (data) => {
       const container = document.getElementById('queue-items-container');
       const countEl = document.getElementById('queue-count');
+      if (!container || !countEl) return;
       
       countEl.textContent = `${data.queue.length} item`;
 
@@ -86,7 +92,7 @@
         container.innerHTML = `
           <div class="queue-list-empty">
             <div style="font-size: 48px; margin-bottom: 10px;">📭</div>
-            <div>Queue boş. Yukarıdan time ekleyin!</div>
+            <div>Sıra boş. Time modalında süreyi yazıp Sıraya ekle.</div>
           </div>
         `;
         return;

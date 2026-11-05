@@ -944,103 +944,66 @@
       document.head.appendChild(style);
     },
 
-    // Create floating button
-    createFloatingButton: () => {
-      const btn = document.createElement('div');
-      btn.id = 'queue-floating-btn';
-      btn.innerHTML = `
-        📋
-        <span class="queue-badge">0</span>
-      `;
-      document.body.appendChild(btn);
-      return btn;
-    },
+    // Floating launcher removed — queue lives on the timesheet
+    createFloatingButton: () => null,
 
-    // Create main panel
+    // Inline queue strip on the timesheet card (no separate modal)
     createPanel: () => {
+      document.getElementById('queue-floating-btn')?.remove();
+      document.getElementById('queue-panel')?.remove();
+
       const panel = document.createElement('div');
       panel.id = 'queue-panel';
       panel.innerHTML = `
         <div class="queue-header" id="queue-header">
-          <h3>⏱️ Timer Queue ${window.CONFIG && window.CONFIG.TEST_MODE ? '<span style="background: #f56565; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">TEST MODE</span>' : ''}</h3>
-          <div class="queue-header-actions">
-            <button class="queue-header-btn" id="queue-minimize-btn" title="Minimize">−</button>
-            <button class="queue-header-btn" id="queue-close-btn" title="Close">×</button>
-          </div>
+          <h3>Sıra</h3>
         </div>
-        
         <div class="queue-controls">
-          <button class="queue-btn queue-btn-start" id="queue-start-btn" title="Start Queue">
-            ▶️
-          </button>
-          <button class="queue-btn queue-btn-pause" id="queue-pause-btn" disabled title="Pause/Resume">
-            ⏸️
-          </button>
-          <button class="queue-btn queue-btn-stop" id="queue-stop-btn" disabled title="Stop Queue">
-            ⏹️
-          </button>
-          <button class="queue-btn queue-btn-clear" id="queue-clear-btn" title="Clear All">
-            🗑️
-          </button>
+          <button class="queue-btn queue-btn-start" id="queue-start-btn" title="Start Queue" type="button">▶</button>
+          <button class="queue-btn queue-btn-pause" id="queue-pause-btn" disabled title="Pause/Resume" type="button">⏸</button>
+          <button class="queue-btn queue-btn-stop" id="queue-stop-btn" disabled title="Stop Queue" type="button">⏹</button>
+          <button class="queue-btn queue-btn-clear" id="queue-clear-btn" title="Clear All" type="button">✕</button>
         </div>
-        
-        <div class="queue-stats" id="queue-stats">
-          <!-- Will be populated dynamically -->
-        </div>
-        
-        <div class="queue-form">
-          <div class="queue-form-title">➕ Yeni Time</div>
-          <form id="queue-add-form">
-            <div class="queue-form-group">
-              <label class="queue-form-label">📁 Proje</label>
-              <input type="text" class="queue-form-input" id="queue-project-input" placeholder="Proje ara...">
-              <input type="hidden" id="queue-project-id">
-              <input type="hidden" id="queue-client-id">
-              <div id="queue-project-results" style="display: none;"></div>
-            </div>
-            <div class="queue-form-group">
-              <label class="queue-form-label">📋 Action Item</label>
-              <input type="text" class="queue-form-input" id="queue-task-input" placeholder="Action Item ara..." disabled>
-              <input type="hidden" id="queue-task-id">
-              <div id="queue-task-results" style="display: none;"></div>
-            </div>
-            <div class="queue-form-group">
-              <label class="queue-form-label">🎯 Task (Opsiyonel)</label>
-              <input type="text" class="queue-form-input" id="queue-trello-input" placeholder="Task ara..." disabled>
-              <input type="hidden" id="queue-trello-id">
-              <div id="queue-trello-results" style="display: none;"></div>
-            </div>
-            <div class="queue-form-group">
-              <label class="queue-form-label">📝 Not</label>
-              <input type="text" class="queue-form-input" id="queue-note-input" placeholder="Not..." required>
-            </div>
-            <div class="queue-form-group">
-              <label class="queue-form-label">⏱️ Süre (dk)</label>
-              <input type="number" class="queue-form-input" id="queue-duration-input" placeholder="140" min="1" required>
-            </div>
-            <div class="queue-form-actions">
-              <button type="submit" class="queue-form-btn queue-form-btn-primary">
-                ✅ Ekle
-              </button>
-            </div>
-          </form>
-        </div>
-        
+        <div class="queue-stats" id="queue-stats"></div>
         <div class="queue-list" id="queue-list">
           <div class="queue-list-title">
-            <span>📋 Queue Listesi</span>
-            <span id="queue-count">0 item</span>
+            <span>Bekleyen kayıtlar</span>
+            <span id="queue-count">0</span>
           </div>
           <div id="queue-items-container">
-            <div class="queue-list-empty">
-              <div style="font-size: 48px; margin-bottom: 10px;">📭</div>
-              <div>Queue boş. Yukarıdan time ekleyin!</div>
-            </div>
+            <div class="queue-list-empty">Sıra boş. Time modalında süreyi yazıp Sıraya ekle.</div>
           </div>
         </div>
       `;
-      
-      document.body.appendChild(panel);
+
+      const card = document.querySelector('.timesheet-card .card-body') || document.querySelector('.timesheet-card');
+      const sheet = card?.querySelector('.timesheet');
+      if (card && sheet) card.insertBefore(panel, sheet);
+      else if (card) card.appendChild(panel);
+      else document.body.appendChild(panel);
+
+      if (!document.getElementById('ha-queue-inline-style')) {
+        const style = document.createElement('style');
+        style.id = 'ha-queue-inline-style';
+        style.textContent = `
+          #queue-floating-btn { display: none !important; }
+          #queue-panel {
+            position: static !important;
+            width: 100% !important;
+            max-height: 280px !important;
+            display: flex !important;
+            right: auto !important;
+            bottom: auto !important;
+            margin: 0 0 12px !important;
+            border-radius: 12px !important;
+            box-shadow: none !important;
+            border: 1px solid #e7e5e4 !important;
+            animation: none !important;
+          }
+          #queue-panel .queue-form { display: none !important; }
+        `;
+        document.head.appendChild(style);
+      }
       return panel;
     },
 

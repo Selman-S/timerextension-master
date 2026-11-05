@@ -121,22 +121,17 @@
   setInterval(() => {
     const currentUrl = window.location.href;
     const urlChanged = currentUrl !== lastUrl;
-    const queueBtn = document.getElementById('queue-floating-btn');
+    const queueHost = document.getElementById('queue-panel');
     const isTimePage = window.location.pathname === '/time';
     
-    if (isTimePage && !queueBtn) {
-      // On time page but queue not initialized
+    if (isTimePage && !queueHost) {
       console.log('Queue: Initializing on /time page');
-      initQueue(false); // Don't show notification on first load
-    } else if (!isTimePage && queueBtn) {
-      // Not on time page but queue is visible, hide it
-      queueBtn.style.display = 'none';
-      const panel = document.getElementById('queue-panel');
-      if (panel) panel.style.display = 'none';
-      UIManager.isInitialized = false; // Mark as not initialized for next visit
-    } else if (isTimePage && queueBtn) {
-      // On time page and queue exists
-      queueBtn.style.display = 'flex';
+      initQueue(false);
+    } else if (!isTimePage && queueHost) {
+      queueHost.style.display = 'none';
+      UIManager.isInitialized = false;
+    } else if (isTimePage && queueHost) {
+      queueHost.style.display = 'flex';
       
       // If URL changed (navigated to /time from another page), reinitialize
       if (urlChanged && !UIManager.isInitialized) {

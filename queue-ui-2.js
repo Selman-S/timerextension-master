@@ -11,18 +11,15 @@
   window.UIManagerPart2 = {
     // Attach event listeners
     attachEventListeners: (elements) => {
-      // Floating button click
-      elements.floatingBtn.addEventListener('click', () => {
+      elements.floatingBtn?.addEventListener('click', () => {
         window.UIManager.togglePanel();
       });
 
-      // Close button
-      document.getElementById('queue-close-btn').addEventListener('click', () => {
+      document.getElementById('queue-close-btn')?.addEventListener('click', () => {
         window.UIManager.closePanel();
       });
 
-      // Minimize button
-      document.getElementById('queue-minimize-btn').addEventListener('click', () => {
+      document.getElementById('queue-minimize-btn')?.addEventListener('click', () => {
         window.UIManager.minimizePanel();
       });
 
@@ -52,8 +49,7 @@
         }
       });
 
-      // Form submission
-      document.getElementById('queue-add-form').addEventListener('submit', (e) => {
+      document.getElementById('queue-add-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         window.UIManager.handleAddItem();
       });
@@ -85,8 +81,21 @@
         }
       });
 
-      // Project search
+      // Legacy floating form search (skipped when queue is inline)
       const projectInput = document.getElementById('queue-project-input');
+      if (!projectInput) {
+        window.addEventListener('queue-progress-update', () => {
+          window.UIManager.updateUI();
+        });
+        window.addEventListener('beforeunload', async (e) => {
+          const data = await window.StorageManager.getAll();
+          if (data.queueState.isRunning && !data.queueState.isPaused) {
+            e.preventDefault();
+            e.returnValue = '';
+          }
+        });
+        return;
+      }
       let projectTimeout;
       projectInput.addEventListener('input', (e) => {
         clearTimeout(projectTimeout);

@@ -13,6 +13,8 @@
   let pollId = null;
   let uiTickId = null;
   let stopping = false;
+  let uiBusy = false; // ignore our own DOM writes in MutationObserver
+  let moTimer = null;
   const stoppedIds = new Set();
 
   const getToken = () => localStorage.getItem('user');
@@ -73,11 +75,33 @@
     }
   };
 
-  // Remaining ms until planned auto-stop (wall clock from Start)
+  // Anchor the minute shown on the row so seconds keep counting between UI updates
+  let elapsedAnchor = { label: '', minutes: 0, at: 0 };
+
+  const readEntryClock = () => {
+    const row = document.querySelector('.entry.active-entry .entry-time');
+    const modalInput = document.querySelector('.modal.show .timesheet-modal input.time-input');
+    const text = String(row?.textContent || modalInput?.value || '').trim();
+    return { text, minutes: parseHmToMinutes(text) };
+  };
+
+  // Elapsed ms on the open entry (shown time + seconds since that label appeared)
+  const getElapsedMs = () => {
+    const { text, minutes } = readEntryClock();
+    if (minutes == null) return null;
+    if (elapsedAnchor.label !== text) {
+      elapsedAnchor = { label: text, minutes, at: Date.now() };
+    }
+    return elapsedAnchor.minutes * 60_000 + (Date.now() - elapsedAnchor.at);
+  };
+
+  // Remaining until the target, minus time already on this entry (90 − 53 = 37)
   const getRemainingMs = () => {
     const planned = getPlanned();
     if (!planned) return null;
-    return planned.setAt + planned.minutes * 60_000 - Date.now();
+    const elapsed = getElapsedMs();
+    if (elapsed == null) return planned.setAt + planned.minutes * 60_000 - Date.now();
+    return planned.minutes * 60_000 - elapsed;
   };
 
   const setPlanned = (minutes, keepSetAt) => {
@@ -157,6 +181,17 @@
         color: #57534e;
         margin: 0;
       }
+      #ha-queue-add {
+        border: 0;
+        background: #5b21b6;
+        color: #fff;
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      #queue-panel, #queue-floating-btn { display: none !important; }
       #ha-planned-remain-modal {
         margin-top: 8px;
         font-size: 13px;
@@ -187,116 +222,210 @@
 
   // Badge on active timesheet row: "kalan 39:12"
   const updateRowRemain = () => {
-    injectStyles();
-    document.querySelectorAll('.ha-remain-badge').forEach((el) => {
-      if (!el.closest('.entry.active-entry')) el.remove();
-    });
+    uiBusy = true;
+    try {
+      injectStyles();
+      document.querySelectorAll('.ha-remain-badge').forEach((el) => {
+        if (!el.closest('.entry.active-entry')) el.remove();
+      });
 
-    const active = document.querySelector('.entry.active-entry');
-    const remainMs = getRemainingMs();
-    const planned = getPlanned();
+      const active = document.querySelector('.entry.active-entry');
+      const remainMs = getRemainingMs();
+      const planned = getPlanned();
 
-    if (!active || remainMs == null || !planned) {
-      document.querySelectorAll('.ha-remain-badge').forEach((el) => el.remove());
-      return;
+      if (!active || remainMs == null || !planned) {
+        document.querySelectorAll('.ha-remain-badge').forEach((el) => el.remove());
+        return;
+      }
+
+      const actions = active.querySelector('.entry-actions');
+      const timeEl = active.querySelector('.entry-time');
+      if (!actions || !timeEl) return;
+
+      let badge = active.querySelector('.ha-remain-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'ha-remain-badge';
+        actions.insertBefore(badge, timeEl);
+      }
+
+      const label = remainMs <= 0 ? 'kalan 0:00' : `kalan ${formatRemain(remainMs)}`;
+      const title = `Planlı stop: ${planned.minutes} dk`;
+      const urgent = remainMs <= 5 * 60_000;
+      if (badge.textContent !== label) badge.textContent = label;
+      if (badge.title !== title) badge.title = title;
+      badge.classList.toggle('is-urgent', urgent);
+    } finally {
+      uiBusy = false;
     }
-
-    const actions = active.querySelector('.entry-actions');
-    const timeEl = active.querySelector('.entry-time');
-    if (!actions || !timeEl) return;
-
-    let badge = active.querySelector('.ha-remain-badge');
-    if (!badge) {
-      badge = document.createElement('span');
-      badge.className = 'ha-remain-badge';
-      badge.title = `Planlı stop: ${planned.minutes} dk`;
-      actions.insertBefore(badge, timeEl);
-    }
-
-    const urgent = remainMs <= 5 * 60_000;
-    badge.classList.toggle('is-urgent', urgent);
-    badge.textContent = remainMs <= 0 ? 'kalan 0:00' : `kalan ${formatRemain(remainMs)}`;
   };
 
-  // Inject / refresh planned-duration field + remaining in modal
+  // Drop the old floating queue window if another script created it
+  const removeQueueWindow = () => {
+    document.getElementById('queue-panel')?.remove();
+    document.getElementById('queue-floating-btn')?.remove();
+  };
+
+  const selectValue = (root) => {
+    if (!root) return null;
+    const nodes = [root, ...root.querySelectorAll('div')].slice(0, 40);
+    for (const node of nodes) {
+      const keys = Object.keys(node);
+      const propKey = keys.find((k) => k.startsWith('__reactProps$'));
+      if (propKey && node[propKey]?.value && typeof node[propKey].value === 'object') {
+        return node[propKey].value;
+      }
+      const fiberKey = keys.find((k) => k.startsWith('__reactFiber$'));
+      let fiber = fiberKey ? node[fiberKey] : null;
+      for (let d = 0; d < 8 && fiber; d++) {
+        const value = fiber.memoizedProps?.value;
+        if (value && typeof value === 'object' && (value.id || value.value || value.name)) return value;
+        fiber = fiber.return;
+      }
+    }
+    return null;
+  };
+
+  const fieldByLabel = (modal, labelText) => {
+    const label = [...modal.querySelectorAll('label')].find((el) => {
+      const text = (el.childNodes[0]?.textContent || el.textContent || '').trim().toLowerCase();
+      return text === labelText || text.startsWith(labelText);
+    });
+    const group = label?.closest('.form-group') || label?.parentElement;
+    return selectValue(group);
+  };
+
+  // Add the open timer modal entry onto the hidden queue and start it
+  const addCurrentEntryToQueue = async (modal) => {
+    const minutes = Number(document.getElementById('ha-planned-stop-input')?.value);
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      showToast('Önce dakika yaz');
+      return;
+    }
+    const project = fieldByLabel(modal, 'project');
+    const action = fieldByLabel(modal, 'action item');
+    const task = fieldByLabel(modal, 'task');
+    const notes = modal.querySelector('input.note-input')?.value?.trim() || '';
+    const projectId = project?.value || project?.id;
+    const taskId = action?.id;
+    if (!projectId || !taskId || !notes) {
+      showToast('Proje, action item ve not gerekli');
+      return;
+    }
+    if (!window.QueueManager?.addItem) {
+      showToast('Sıra hazır değil. Eklentiyi yenile.');
+      return;
+    }
+    const duration = Math.min(Math.round(minutes), 600);
+    const before = await window.StorageManager?.getAll?.();
+    const wasRunning = !!before?.queueState?.isRunning && !before?.queueState?.isPaused;
+    await window.QueueManager.addItem({
+      projectId,
+      projectName: project.label || project.name || 'Proje',
+      taskId,
+      taskName: action.name || 'Action',
+      trelloId: task?.id && String(task.id) !== String(taskId) ? task.id : null,
+      trelloTitle: task?.title || '',
+      notes,
+      duration,
+    });
+    showToast(`${duration} dk sıraya eklendi`);
+    if (!wasRunning && window.QueueManager.start) {
+      await window.QueueManager.start();
+    }
+  };
+
+  // Inject planned-duration field once; refresh remaining text cheaply
   const enhanceModal = () => {
-    const modal = document.querySelector('.modal.show .timesheet-modal, .timesheet-modal');
-    if (!modal || !modal.closest('.modal.show')) return;
+    const modal = document.querySelector('.modal.show .timesheet-modal');
+    if (!modal) return;
 
-    injectStyles();
+    uiBusy = true;
+    try {
+      injectStyles();
 
-    let wrap = modal.querySelector('#ha-planned-stop-wrap');
-    if (!wrap) {
-      const timeInput = modal.querySelector('input.time-input');
-      const form = modal.querySelector('#modal-entry-form') || modal.querySelector('form');
-      if (!form && !timeInput) return;
+      let wrap = modal.querySelector('#ha-planned-stop-wrap');
+      if (!wrap) {
+        const timeInput = modal.querySelector('input.time-input');
+        const form = modal.querySelector('#modal-entry-form') || modal.querySelector('form');
+        if (!form && !timeInput) return;
 
-      wrap = document.createElement('div');
-      wrap.id = 'ha-planned-stop-wrap';
-      wrap.innerHTML = `
-        <label for="ha-planned-stop-input">Otomatik durdur (dakika)</label>
-        <div class="ha-planned-row">
-          <input id="ha-planned-stop-input" type="number" min="1" max="${MAX_MINUTES}"
+        wrap = document.createElement('div');
+        wrap.id = 'ha-planned-stop-wrap';
+        wrap.innerHTML = `
+          <label for="ha-planned-stop-input">Otomatik durdur (dakika)</label>
+          <div class="ha-planned-row">
+          <input id="ha-planned-stop-input" type="number" min="1" max="600"
             step="1" placeholder="örn. 40" />
-          <p class="ha-planned-hint">Start Timer sonrası bu sürede durur · max ${MAX_MINUTES} dk</p>
-        </div>
-        <div id="ha-planned-remain-modal" hidden></div>
-      `;
+          <p class="ha-planned-hint">Start Timer max ${MAX_MINUTES} dk · Sıraya ekle daha uzun süreyi böler</p>
+          </div>
+          <button type="button" id="ha-queue-add">Sıraya ekle</button>
+          <div id="ha-planned-remain-modal" hidden></div>
+        `;
 
-      const timeCol = timeInput?.closest('.col-sm-3, .col-3, [class*="col-"]');
-      const row = timeCol?.parentElement;
-      if (row) {
-        const full = document.createElement('div');
-        full.className = 'col-sm-12';
-        full.appendChild(wrap);
-        row.appendChild(full);
-      } else if (form) {
-        form.appendChild(wrap);
-      } else {
-        modal.querySelector('.modal-body')?.appendChild(wrap);
-      }
-
-      const input = wrap.querySelector('#ha-planned-stop-input');
-      input?.addEventListener('keydown', (e) => e.stopPropagation());
-      // Allow editing planned minutes while Update modal is open
-      input?.addEventListener('change', () => {
-        const raw = input.value?.trim();
-        if (raw && Number(raw) > 0) {
-          const had = !!getPlanned();
-          setPlanned(raw, had);
-          updateRemainUi();
-        } else if (!raw) {
-          clearPlanned();
-          updateRemainUi();
+        const timeCol = timeInput?.closest('.col-sm-3, .col-3, [class*="col-"]');
+        const row = timeCol?.parentElement;
+        if (row) {
+          const full = document.createElement('div');
+          full.className = 'col-sm-12';
+          full.appendChild(wrap);
+          row.appendChild(full);
+        } else if (form) {
+          form.appendChild(wrap);
+        } else {
+          modal.querySelector('.modal-body')?.appendChild(wrap);
         }
-      });
-    }
 
-    const planned = getPlanned();
-    const input = wrap.querySelector('#ha-planned-stop-input');
-    const remainEl = wrap.querySelector('#ha-planned-remain-modal');
-    const successBtn = modal.querySelector('button.btn-success');
-    const btnLabel = (successBtn?.textContent || '').replace(/\s+/g, ' ').trim();
-    const isUpdate = /update entry/i.test(btnLabel);
-
-    // Prefill from session when Update opens / field empty
-    if (planned && input && (isUpdate || !input.value)) {
-      if (document.activeElement !== input) input.value = String(planned.minutes);
-    }
-
-    if (remainEl) {
-      const remainMs = getRemainingMs();
-      if (planned && remainMs != null && document.querySelector('.entry.active-entry')) {
-        remainEl.hidden = false;
-        remainEl.classList.toggle('is-urgent', remainMs <= 5 * 60_000);
-        remainEl.textContent =
-          remainMs <= 0
-            ? `Kalan süre: 0:00 (durduruluyor…)`
-            : `Kalan süre: ${formatRemain(remainMs)} · hedef ${planned.minutes} dk`;
-      } else {
-        remainEl.hidden = true;
-        remainEl.textContent = '';
+        const inputEl = wrap.querySelector('#ha-planned-stop-input');
+        inputEl?.addEventListener('keydown', (e) => e.stopPropagation());
+        inputEl?.addEventListener('change', () => {
+          const raw = inputEl.value?.trim();
+          if (raw && Number(raw) > 0) {
+            setPlanned(raw, !!getPlanned());
+            updateRemainUi();
+          } else if (!raw) {
+            clearPlanned();
+            updateRemainUi();
+          }
+        });
+        wrap.querySelector('#ha-queue-add')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          addCurrentEntryToQueue(modal);
+        });
       }
+
+      const planned = getPlanned();
+      const input = wrap.querySelector('#ha-planned-stop-input');
+      const remainEl = wrap.querySelector('#ha-planned-remain-modal');
+      const successBtn = modal.querySelector('button.btn-success');
+      const btnLabel = (successBtn?.textContent || '').replace(/\s+/g, ' ').trim();
+      const isUpdate = /update entry/i.test(btnLabel);
+
+      if (planned && input && document.activeElement !== input && (isUpdate || !input.value)) {
+        const next = String(planned.minutes);
+        if (input.value !== next) input.value = next;
+      }
+
+      if (remainEl) {
+        const remainMs = getRemainingMs();
+        if (planned && remainMs != null && document.querySelector('.entry.active-entry')) {
+          const elapsedMs = getElapsedMs();
+          const elapsedLabel = elapsedMs == null ? '' : `${formatRemain(elapsedMs)} / `;
+          const text =
+            remainMs <= 0
+              ? 'Kalan süre: 0:00 (durduruluyor…)'
+              : `Kalan süre: ${formatRemain(remainMs)} · ${elapsedLabel}${planned.minutes} dk`;
+          remainEl.hidden = false;
+          remainEl.classList.toggle('is-urgent', remainMs <= 5 * 60_000);
+          if (remainEl.textContent !== text) remainEl.textContent = text;
+        } else if (!remainEl.hidden || remainEl.textContent) {
+          remainEl.hidden = true;
+          remainEl.textContent = '';
+        }
+      }
+    } finally {
+      uiBusy = false;
     }
   };
 
@@ -496,7 +625,10 @@
       console.debug(LOG, 'skipped — not Selman');
       return;
     }
-    console.info(LOG, 'enabled — planned modal stop + remaining UI + 2h safety cap');
+    console.info(LOG, 'enabled — planned modal stop + queue add, no queue window');
+    removeQueueWindow();
+    setInterval(removeQueueWindow, 1000);
+    window.QueueManager?.init?.();
     bindStartCapture();
     enhanceModal();
     updateRemainUi();
@@ -506,14 +638,30 @@
     if (uiTickId) clearInterval(uiTickId);
     uiTickId = setInterval(updateRemainUi, UI_TICK_MS);
 
-    // Re-inject field when modal opens / React re-renders
-    const mo = new MutationObserver(() => {
-      if (document.querySelector('.modal.show .timesheet-modal')) {
-        enhanceModal();
-      }
-      if (document.querySelector('.entry.active-entry') && getPlanned()) {
-        updateRowRemain();
-      }
+    // Debounced: only re-inject when modal appears — never from our own writes
+    const mo = new MutationObserver((mutations) => {
+      if (uiBusy) return;
+      const ours = mutations.every((m) => {
+        const t = m.target;
+        return (
+          (t.nodeType === 1 &&
+            (t.id === 'ha-planned-stop-wrap' ||
+              t.id === 'ha-planned-remain-modal' ||
+              t.classList?.contains('ha-remain-badge') ||
+              t.closest?.('#ha-planned-stop-wrap, .ha-remain-badge'))) ||
+          (t.parentElement &&
+            (t.parentElement.id === 'ha-planned-remain-modal' ||
+              t.parentElement.classList?.contains('ha-remain-badge')))
+        );
+      });
+      if (ours) return;
+
+      clearTimeout(moTimer);
+      moTimer = setTimeout(() => {
+        if (document.querySelector('.modal.show .timesheet-modal')) {
+          enhanceModal();
+        }
+      }, 200);
     });
     mo.observe(document.body, { childList: true, subtree: true });
 
