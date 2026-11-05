@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Hyperactive Pro Time Enhancer",
-  "version": "4.3.0",
-  "description": "Time queue, pulse ve Selman için planlı/2saat otomatik stop.",
+  "version": "4.3.1",
+  "description": "Time queue, pulse ve Selman için planlı/2saat otomatik stop + kalan süre.",
   "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [
     {
