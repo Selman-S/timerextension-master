@@ -173,11 +173,16 @@
       #ha-planned-stop-wrap {
         position: fixed;
         z-index: 2000;
+        box-sizing: border-box;
         padding: 10px 12px;
         border: 1px dashed #0f766e;
         border-radius: 10px;
         background: #f0fdfa;
-        box-shadow: 0 8px 24px rgba(0,0,0,.08);
+      }
+      #ha-planned-stop-wrap[hidden] { display: none !important; }
+      /* Room at the bottom of the form so the fixed panel sits inside the modal */
+      .modal.show .timesheet-modal .modal-body {
+        padding-bottom: var(--ha-limit-pad, 140px) !important;
       }
       #ha-planned-stop-wrap label {
         display: block;
@@ -395,6 +400,19 @@
     document.getElementById('queue-floating-btn')?.remove();
   };
 
+  // Panel lives outside React, so hide it in the same frame the modal starts closing
+  let suppressPanelUntil = 0;
+  const hideLimitPanel = () => {
+    const wrap = document.getElementById('ha-planned-stop-wrap');
+    if (wrap && !wrap.hidden) wrap.hidden = true;
+  };
+  const dismissLimitPanel = () => {
+    suppressPanelUntil = Date.now() + 500;
+    hideLimitPanel();
+  };
+
+  const timesheetModalOpen = () => !!document.querySelector('.modal.show .timesheet-modal');
+
   // Visible react-select label inside the form group (page state is not readable from the extension)
   const selectedLabel = (modal, labelText) => {
     const label = [...modal.querySelectorAll('label')].find((el) => {
@@ -420,18 +438,25 @@
     return true;
   };
 
-  // Inject planned-duration field once; refresh remaining text cheaply
+  // Pin the panel to the bottom of the modal body, same width as the form
   const placeLimitPanel = (modal, wrap) => {
-    const anchor = modal.querySelector('input.time-input') || modal.querySelector('.modal-footer');
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    const width = Math.min(420, modal.getBoundingClientRect().width - 48);
-    const left = Math.max(8, rect.left);
-    const top = Math.min(window.innerHeight - 90, rect.bottom + 8);
+    const body = modal.querySelector('.modal-body') || modal;
+    wrap.hidden = false;
+    const panelH = wrap.offsetHeight || 118;
+    const pad = `${panelH + 20}px`;
+    if (document.documentElement.style.getPropertyValue('--ha-limit-pad') !== pad) {
+      document.documentElement.style.setProperty('--ha-limit-pad', pad);
+    }
+    const rect = body.getBoundingClientRect();
+    const cs = getComputedStyle(body);
+    const padL = parseFloat(cs.paddingLeft) || 16;
+    const padR = parseFloat(cs.paddingRight) || 16;
+    const left = Math.round(rect.left + padL);
+    const width = Math.max(220, Math.round(rect.width - padL - padR));
+    const top = Math.round(rect.bottom - panelH - 8);
     const nextLeft = `${left}px`;
     const nextTop = `${top}px`;
     const nextWidth = `${width}px`;
-    wrap.hidden = false;
     if (wrap.style.left !== nextLeft) wrap.style.left = nextLeft;
     if (wrap.style.top !== nextTop) wrap.style.top = nextTop;
     if (wrap.style.width !== nextWidth) wrap.style.width = nextWidth;
@@ -440,8 +465,8 @@
   const enhanceModal = () => {
     const modal = document.querySelector('.modal.show .timesheet-modal');
     const existing = document.getElementById('ha-planned-stop-wrap');
-    if (!modal) {
-      if (existing) existing.hidden = true;
+    if (!modal || Date.now() < suppressPanelUntil) {
+      hideLimitPanel();
       return;
     }
 
@@ -525,9 +550,7 @@
   const updateRemainUi = () => {
     updateRowRemain();
     paintQueueMarks();
-    if (document.querySelector('.modal.show .timesheet-modal')) {
-      enhanceModal();
-    }
+    enhanceModal();
   };
 
   // Capture planned minutes when Start Timer is clicked
@@ -731,6 +754,28 @@
     removeQueueWindow();
     setInterval(removeQueueWindow, 1000);
     bindStartCapture();
+    // Close button, Cancel, and Escape dismiss the modal before the next UI tick
+    document.addEventListener(
+      'click',
+      (e) => {
+        const t = e.target;
+        if (!t?.closest || t.closest('#ha-planned-stop-wrap')) return;
+        const dismiss =
+          t.closest('.timesheet-modal .close, .timesheet-modal button[aria-label="Close"]') ||
+          [...document.querySelectorAll('.timesheet-modal button')].find(
+            (btn) => btn.contains(t) && /^cancel$/i.test((btn.textContent || '').replace(/\s+/g, ' ').trim())
+          );
+        if (dismiss) dismissLimitPanel();
+      },
+      true
+    );
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key === 'Escape' && timesheetModalOpen()) dismissLimitPanel();
+      },
+      true
+    );
     enhanceModal();
     updateRemainUi();
     tick();
@@ -751,6 +796,8 @@
       );
     };
     const mo = new MutationObserver((mutations) => {
+      // Modal loses .show (or unmounts) on close; don't wait for the 1s tick
+      if (!timesheetModalOpen()) hideLimitPanel();
       if (uiBusy) return;
       const reactWipedBadges = mutations.some((m) =>
         [...m.removedNodes].some(
@@ -762,7 +809,12 @@
       if (!reactWipedBadges) return;
       updateRemainUi();
     });
-    mo.observe(document.body, { childList: true, subtree: true });
+    mo.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'],
+    });
 
     // Refresh poll speed when planned stop is set/cleared
     setInterval(schedulePoll, 15_000);

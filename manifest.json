@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hyperactive Pro Time Enhancer",
-  "version": "4.7.5",
+  "version": "4.7.7",
   "description": "Pulse. Kayda max dakika yazılır; sadece sınırlı kayıtlar sırayla durup başlar.",
   "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [
