@@ -267,12 +267,11 @@
     // Create new timer
     createTimer: async (data) => {
       const today = Utils.getTodayString();
-      return await APIManager.fetchWithRetry(API_ENDPOINTS.TIME_CREATE, {
+      return await APIManager.fetchWithRetry(`${API_ENDPOINTS.TIME_CREATE}?startDate=${today}`, {
         method: 'POST',
         body: JSON.stringify({
           ...data,
-          time: 0, // Always 0, backend will start timer
-          startDate: today,
+          time: 0, // Always 0, backend starts the live timer
         }),
       });
     },

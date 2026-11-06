@@ -1,15 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Hyperactive Pro Time Enhancer",
-  "version": "4.6.2",
-  "description": "Pulse. Süre timer penceresinden sıraya eklenir; ayri queue penceresi yok.",
+  "version": "4.7.5",
+  "description": "Pulse. Kayda max dakika yazılır; sadece sınırlı kayıtlar sırayla durup başlar.",
   "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [
     {
       "matches": ["https://hyperactive.pro/*"],
       "js": [
-        "queue-manager.js",
-        "queue-core.js",
         "my-pulse.js",
         "auto-stop.js"
       ]

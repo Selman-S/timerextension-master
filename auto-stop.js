@@ -7,7 +7,7 @@
   const FAST_POLL_MS = 4_000;
   const UI_TICK_MS = 1_000; // remaining countdown refresh
   const BASE_URL = 'https://hyperactive.pro/api';
-  const STORAGE_KEY = 'ha_planned_stop';
+  const LIMITS_KEY = 'ha_entry_limits';
   const LOG = '[HyperActive Ext][AutoStop]';
 
   let pollId = null;
@@ -59,29 +59,54 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
-  const getPlanned = () => {
+  const loadLimits = () => {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      const minutes = Number(data?.minutes);
-      if (!Number.isFinite(minutes) || minutes < 1) return null;
-      return {
-        minutes: Math.min(Math.round(minutes), MAX_MINUTES),
-        setAt: Number(data.setAt) || Date.now(),
-      };
+      const list = JSON.parse(sessionStorage.getItem(LIMITS_KEY) || '[]');
+      return Array.isArray(list) ? list : [];
     } catch {
-      return null;
+      return [];
     }
   };
 
+  const saveLimits = (list) => sessionStorage.setItem(LIMITS_KEY, JSON.stringify(list));
+
+  const upsertLimit = (hint, minutes) => {
+    const mins = Math.min(600, Math.max(1, Math.round(Number(minutes) || 0)));
+    const list = loadLimits().filter((item) => item.hint !== hint);
+    list.push({ hint, minutes: mins });
+    saveLimits(list);
+  };
+
+  const removeLimitByHint = (hint) => {
+    saveLimits(loadLimits().filter((item) => item.hint !== hint));
+  };
+
   // Anchor the minute shown on the row so seconds keep counting between UI updates
-  let elapsedAnchor = { label: '', minutes: 0, at: 0 };
+  let elapsedAnchor = { key: '', label: '', minutes: 0, at: 0 };
+
+  // Running row after an in-page start, even before React adds active-entry
+  const runningEntry = () =>
+    document.querySelector('.entry.active-entry') ||
+    [...document.querySelectorAll('.entries .entry, .timesheet .entry')].find((entry) =>
+      /stop/i.test(entry.querySelector('button.start-btn, button.btn-danger')?.textContent || '')
+    );
+
+  // The clock text only, not the badges sitting beside it
+  const clockText = (entry) => {
+    if (!entry) return '';
+    for (const node of entry.querySelectorAll('.entry-time, .font-medium-2, span')) {
+      const own = [...node.childNodes]
+        .filter((n) => n.nodeType === 3)
+        .map((n) => n.textContent)
+        .join('')
+        .trim();
+      if (/^\d+:\d{2}$/.test(own)) return own;
+    }
+    return '';
+  };
 
   const readEntryClock = () => {
-    const row = document.querySelector('.entry.active-entry .entry-time');
-    const modalInput = document.querySelector('.modal.show .timesheet-modal input.time-input');
-    const text = String(row?.textContent || modalInput?.value || '').trim();
+    const text = clockText(runningEntry());
     return { text, minutes: parseHmToMinutes(text) };
   };
 
@@ -89,30 +114,27 @@
   const getElapsedMs = () => {
     const { text, minutes } = readEntryClock();
     if (minutes == null) return null;
-    if (elapsedAnchor.label !== text) {
-      elapsedAnchor = { label: text, minutes, at: Date.now() };
+    const active = runningEntry();
+    const key = `${active ? entryBlob(active).slice(0, 80) : ''}|${text}`;
+    if (elapsedAnchor.key !== key) {
+      elapsedAnchor = { key, label: text, minutes, at: Date.now() };
     }
     return elapsedAnchor.minutes * 60_000 + (Date.now() - elapsedAnchor.at);
   };
 
-  // Remaining until the target, minus time already on this entry (90 − 53 = 37)
+  // Only the running row's own max. A new modal must not inherit another timer.
+  const getActiveTargetMinutes = () => {
+    return limitForEntry(runningEntry())?.minutes || null;
+  };
+
+  // Remaining until that row's target, minus time already on it (4 stays 4, 2 stays 2)
   const getRemainingMs = () => {
-    const planned = getPlanned();
-    if (!planned) return null;
+    const minutes = getActiveTargetMinutes();
+    if (!minutes) return null;
     const elapsed = getElapsedMs();
-    if (elapsed == null) return planned.setAt + planned.minutes * 60_000 - Date.now();
-    return planned.minutes * 60_000 - elapsed;
+    if (elapsed == null) return null;
+    return minutes * 60_000 - elapsed;
   };
-
-  const setPlanned = (minutes, keepSetAt) => {
-    const mins = Math.min(Math.max(1, Math.round(Number(minutes) || 0)), MAX_MINUTES);
-    const prev = keepSetAt ? getPlanned() : null;
-    const setAt = prev?.setAt || Date.now();
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ minutes: mins, setAt }));
-    console.info(LOG, 'planned stop saved', { minutes: mins, setAt });
-  };
-
-  const clearPlanned = () => sessionStorage.removeItem(STORAGE_KEY);
 
   const showToast = (message) => {
     let el = document.getElementById('ha-auto-stop-toast');
@@ -149,11 +171,13 @@
     style.id = 'ha-planned-stop-style';
     style.textContent = `
       #ha-planned-stop-wrap {
-        margin-top: 8px;
+        position: fixed;
+        z-index: 2000;
         padding: 10px 12px;
         border: 1px dashed #0f766e;
         border-radius: 10px;
         background: #f0fdfa;
+        box-shadow: 0 8px 24px rgba(0,0,0,.08);
       }
       #ha-planned-stop-wrap label {
         display: block;
@@ -181,15 +205,14 @@
         color: #57534e;
         margin: 0;
       }
-      #ha-queue-add {
+      #ha-limit-clear {
         border: 0;
-        background: #5b21b6;
-        color: #fff;
-        border-radius: 8px;
-        padding: 7px 12px;
+        background: transparent;
+        color: #b45309;
         font-size: 12px;
         font-weight: 700;
         cursor: pointer;
+        text-decoration: underline;
       }
       #queue-panel, #queue-floating-btn { display: none !important; }
       #ha-planned-remain-modal {
@@ -216,6 +239,25 @@
         color: #c2410c;
         border-color: #fdba74;
       }
+      .ha-queue-mark {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font: 700 12px/1.2 system-ui, sans-serif;
+        white-space: nowrap;
+      }
+      .ha-queue-mark.is-open {
+        background: #e7e5e4;
+        color: #57534e;
+        border: 1px solid #d6d3d1;
+      }
+      .ha-queue-mark.is-done {
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid #86efac;
+      }
     `;
     document.head.appendChild(style);
   };
@@ -225,36 +267,123 @@
     uiBusy = true;
     try {
       injectStyles();
+      const active = runningEntry();
       document.querySelectorAll('.ha-remain-badge').forEach((el) => {
-        if (!el.closest('.entry.active-entry')) el.remove();
+        if (!active || !active.contains(el)) el.remove();
       });
-
-      const active = document.querySelector('.entry.active-entry');
       const remainMs = getRemainingMs();
-      const planned = getPlanned();
+      const target = getActiveTargetMinutes();
 
-      if (!active || remainMs == null || !planned) {
+      if (!active || remainMs == null || !target) {
         document.querySelectorAll('.ha-remain-badge').forEach((el) => el.remove());
         return;
       }
 
-      const actions = active.querySelector('.entry-actions');
-      const timeEl = active.querySelector('.entry-time');
-      if (!actions || !timeEl) return;
+      const timeEl =
+        [...active.querySelectorAll('.entry-time, .font-medium-2, span')].find((node) =>
+          /^\d+:\d{2}$/.test(
+            [...node.childNodes]
+              .filter((n) => n.nodeType === 3)
+              .map((n) => n.textContent)
+              .join('')
+              .trim()
+          )
+        ) || null;
+      if (!timeEl?.parentElement) return;
 
       let badge = active.querySelector('.ha-remain-badge');
       if (!badge) {
         badge = document.createElement('span');
         badge.className = 'ha-remain-badge';
-        actions.insertBefore(badge, timeEl);
+        const maxBadge = active.querySelector('.ha-queue-mark');
+        timeEl.parentElement.insertBefore(badge, maxBadge || timeEl);
       }
 
       const label = remainMs <= 0 ? 'kalan 0:00' : `kalan ${formatRemain(remainMs)}`;
-      const title = `Planlı stop: ${planned.minutes} dk`;
+      const title = `Planlı stop: ${target} dk`;
       const urgent = remainMs <= 5 * 60_000;
       if (badge.textContent !== label) badge.textContent = label;
       if (badge.title !== title) badge.title = title;
       badge.classList.toggle('is-urgent', urgent);
+    } finally {
+      uiBusy = false;
+    }
+  };
+
+  const entryBlob = (entry) => entry?.querySelector('.entry-info')?.textContent || '';
+
+  const norm = (value) => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // "Project - (Client)|note" so two tasks on the same brand stay separate
+  const modalHint = (modal) => {
+    const project = selectedLabel(modal, 'project').split(' - (')[0];
+    const notes = modal.querySelector('input.note-input, textarea.note-input')?.value || '';
+    const task = selectedLabel(modal, 'task').replace(/\s*\(\d+\)\s*$/, '');
+    const distinctive = notes.trim() || task.trim();
+    if (!project.trim() || !distinctive) return '';
+    return `${norm(project)}|${norm(distinctive).slice(0, 40)}`;
+  };
+
+  const limitForEntry = (entry) => {
+    if (!entry) return null;
+    const blob = norm(entryBlob(entry));
+    const hits = loadLimits().filter((item) => {
+      const [project, note] = String(item.hint || '').split('|');
+      return project && note && blob.includes(project) && blob.includes(note.slice(0, 18));
+    });
+    hits.sort((a, b) => b.hint.length - a.hint.length);
+    return hits[0] || null;
+  };
+
+  // After a max is reached, start the next row that also has a max. Skip the rest.
+  const startNextLimited = (fromEntry) => {
+    const rows = [...document.querySelectorAll('.entries .entry, .timesheet .entries .entry')];
+    const from = rows.indexOf(fromEntry);
+    for (let i = Math.max(0, from + 1); i < rows.length; i++) {
+      const limit = limitForEntry(rows[i]);
+      if (!limit) continue;
+      const btn = [...rows[i].querySelectorAll('button')].find((b) =>
+        /^\s*start\s*$/i.test((b.textContent || '').replace(/\s+/g, ' ').trim())
+      );
+      if (!btn) continue;
+      showToast(`Sonraki kayıt başlıyor · max ${limit.minutes} dk`);
+      btn.click();
+      // React swaps the row without a reload; repaint the remain badge after it mounts
+      [400, 1000, 1800].forEach((ms) => setTimeout(updateRemainUi, ms));
+      return;
+    }
+  };
+
+  const paintQueueMarks = () => {
+    uiBusy = true;
+    try {
+      injectStyles();
+      document.querySelectorAll('.timesheet .entry, .entries .entry').forEach((entry) => {
+        const match = limitForEntry(entry);
+        let badge = entry.querySelector('.ha-queue-mark');
+        if (!match) {
+          badge?.remove();
+          entry.classList.remove('ha-max-open', 'ha-max-done');
+          return;
+        }
+        const timeEl = entry.querySelector('.entry-time') || entry.querySelector('.font-medium-2');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'ha-queue-mark';
+          if (timeEl?.parentElement) timeEl.parentElement.insertBefore(badge, timeEl);
+          else entry.querySelector('.entry-info')?.appendChild(badge);
+        }
+        const shown = parseHmToMinutes(timeEl?.textContent);
+        const elapsedMin = entry.classList.contains('active-entry')
+          ? (getElapsedMs() ?? (shown || 0) * 60_000) / 60_000
+          : shown ?? 0;
+        const reached = elapsedMin >= match.minutes;
+        const label = reached ? `max ${match.minutes} dk · doldu` : `max ${match.minutes} dk`;
+        if (badge.textContent !== label) badge.textContent = label;
+        badge.classList.toggle('is-done', reached);
+        badge.classList.toggle('is-open', !reached);
+        entry.classList.remove('ha-max-done', 'ha-max-open');
+      });
     } finally {
       uiBusy = false;
     }
@@ -276,93 +405,51 @@
     return group?.querySelector('.select__single-value')?.textContent?.trim() || '';
   };
 
-  // Add the open timer modal entry onto the hidden queue and start it
-  const addCurrentEntryToQueue = async (modal) => {
-    const minutes = Number(document.getElementById('ha-planned-stop-input')?.value);
-    if (!Number.isFinite(minutes) || minutes < 1) {
-      showToast('Önce dakika yaz');
-      return;
+  // Bind or clear the max on the entry currently open in the modal
+  const saveModalLimit = (modal, minutes) => {
+    const hint = modalHint(modal);
+    if (!hint) {
+      showToast('Önce proje ve not seç');
+      return false;
     }
-    if (!window.APIManager?.getClients || !window.QueueManager?.addItem) {
-      showToast('Sıra hazır değil. Eklentiyi yenile.');
-      return;
+    if (!minutes || minutes < 1) {
+      removeLimitByHint(hint);
+      return true;
     }
-
-    const projectLabel = selectedLabel(modal, 'project');
-    const actionLabel = selectedLabel(modal, 'action item');
-    const taskLabel = selectedLabel(modal, 'task');
-    let notes = modal.querySelector('input.note-input, textarea.note-input')?.value?.trim() || '';
-    if (!notes) notes = taskLabel.replace(/\s*\(\d+\)\s*$/, '').trim() || actionLabel;
-    if (!projectLabel || !actionLabel || !notes) {
-      showToast('Proje, action item ve not gerekli');
-      return;
-    }
-
-    let clients;
-    try {
-      clients = await window.APIManager.getClients();
-    } catch (err) {
-      showToast(err?.message || 'Proje listesi alınamadı');
-      return;
-    }
-    let project = null;
-    for (const client of clients.clients || []) {
-      for (const item of client.Projects || []) {
-        const label = `${item.name} - (${client.name})`;
-        if (label === projectLabel || item.name === projectLabel) {
-          project = { id: item.id, name: item.name };
-        }
-      }
-    }
-    if (!project) {
-      showToast('Proje bulunamadı');
-      return;
-    }
-
-    let taskRes;
-    try {
-      taskRes = await window.APIManager.getTasks(project.id);
-    } catch (err) {
-      showToast(err?.message || 'Action item listesi alınamadı');
-      return;
-    }
-    const actions = taskRes.tasks?.Tasks || taskRes.Tasks || [];
-    const action = actions.find((item) => item.name === actionLabel);
-    if (!action) {
-      showToast('Action item bulunamadı');
-      return;
-    }
-
-    const trelloMatch = taskLabel.match(/\((\d+)\)\s*$/);
-    const duration = Math.min(Math.round(minutes), 600);
-    const before = await window.StorageManager?.getAll?.();
-    const wasRunning = !!before?.queueState?.isRunning && !before?.queueState?.isPaused;
-    await window.QueueManager.addItem({
-      projectId: project.id,
-      projectName: project.name,
-      taskId: action.id,
-      taskName: action.name,
-      trelloId: trelloMatch ? trelloMatch[1] : null,
-      trelloTitle: taskLabel,
-      notes,
-      duration,
-    });
-    showToast(`${duration} dk sıraya eklendi`);
-    if (!wasRunning && window.QueueManager.start) {
-      await window.QueueManager.start();
-    }
+    upsertLimit(hint, minutes);
+    return true;
   };
 
   // Inject planned-duration field once; refresh remaining text cheaply
+  const placeLimitPanel = (modal, wrap) => {
+    const anchor = modal.querySelector('input.time-input') || modal.querySelector('.modal-footer');
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(420, modal.getBoundingClientRect().width - 48);
+    const left = Math.max(8, rect.left);
+    const top = Math.min(window.innerHeight - 90, rect.bottom + 8);
+    const nextLeft = `${left}px`;
+    const nextTop = `${top}px`;
+    const nextWidth = `${width}px`;
+    wrap.hidden = false;
+    if (wrap.style.left !== nextLeft) wrap.style.left = nextLeft;
+    if (wrap.style.top !== nextTop) wrap.style.top = nextTop;
+    if (wrap.style.width !== nextWidth) wrap.style.width = nextWidth;
+  };
+
   const enhanceModal = () => {
     const modal = document.querySelector('.modal.show .timesheet-modal');
-    if (!modal) return;
+    const existing = document.getElementById('ha-planned-stop-wrap');
+    if (!modal) {
+      if (existing) existing.hidden = true;
+      return;
+    }
 
     uiBusy = true;
     try {
       injectStyles();
 
-      let wrap = modal.querySelector('#ha-planned-stop-wrap');
+      let wrap = existing;
       if (!wrap) {
         const timeInput = modal.querySelector('input.time-input');
         const form = modal.querySelector('#modal-entry-form') || modal.querySelector('form');
@@ -371,76 +458,64 @@
         wrap = document.createElement('div');
         wrap.id = 'ha-planned-stop-wrap';
         wrap.innerHTML = `
-          <label for="ha-planned-stop-input">Otomatik durdur (dakika)</label>
+          <label for="ha-planned-stop-input">Max süre (dakika)</label>
           <div class="ha-planned-row">
           <input id="ha-planned-stop-input" type="number" min="1" max="600"
-            step="1" placeholder="örn. 40" />
-          <p class="ha-planned-hint">Start Timer max ${MAX_MINUTES} dk · Sıraya ekle daha uzun süreyi böler</p>
+            step="1" placeholder="boş = sınırsız" />
+          <button type="button" id="ha-limit-clear">Max sınırı kaldır</button>
           </div>
-          <button type="button" id="ha-queue-add">Sıraya ekle</button>
+          <p class="ha-planned-hint">Start veya Update ile kaydolur. Sınırı olan kayıt bitince listedeki sonraki sınırlı kayıt başlar.</p>
           <div id="ha-planned-remain-modal" hidden></div>
         `;
 
-        const timeCol = timeInput?.closest('.col-sm-3, .col-3, [class*="col-"]');
-        const row = timeCol?.parentElement;
-        if (row) {
-          const full = document.createElement('div');
-          full.className = 'col-sm-12';
-          full.appendChild(wrap);
-          row.appendChild(full);
-        } else if (form) {
-          form.appendChild(wrap);
-        } else {
-          modal.querySelector('.modal-body')?.appendChild(wrap);
-        }
+        document.body.appendChild(wrap);
 
         const inputEl = wrap.querySelector('#ha-planned-stop-input');
         inputEl?.addEventListener('keydown', (e) => e.stopPropagation());
-        inputEl?.addEventListener('change', () => {
-          const raw = inputEl.value?.trim();
-          if (raw && Number(raw) > 0) {
-            setPlanned(raw, !!getPlanned());
-            updateRemainUi();
-          } else if (!raw) {
-            clearPlanned();
-            updateRemainUi();
-          }
-        });
-        wrap.querySelector('#ha-queue-add')?.addEventListener('click', (e) => {
+        wrap.querySelector('#ha-limit-clear')?.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          addCurrentEntryToQueue(modal);
+          const open = document.querySelector('.modal.show .timesheet-modal');
+          const hint = open ? modalHint(open) : '';
+          if (hint) removeLimitByHint(hint);
+          if (inputEl) inputEl.value = '';
+          showToast('Max sınır kaldırıldı');
+          updateRemainUi();
         });
       }
+      placeLimitPanel(modal, wrap);
 
-      const planned = getPlanned();
       const input = wrap.querySelector('#ha-planned-stop-input');
       const remainEl = wrap.querySelector('#ha-planned-remain-modal');
-      const successBtn = modal.querySelector('button.btn-success');
-      const btnLabel = (successBtn?.textContent || '').replace(/\s+/g, ' ').trim();
-      const isUpdate = /update entry/i.test(btnLabel);
-
-      if (planned && input && document.activeElement !== input && (isUpdate || !input.value)) {
-        const next = String(planned.minutes);
-        if (input.value !== next) input.value = next;
+      const hint = modalHint(modal);
+      const saved = loadLimits().find((item) => item.hint === hint);
+      if (saved && input && document.activeElement !== input && input.dataset.filledHint !== hint) {
+        input.value = String(saved.minutes);
+        input.dataset.filledHint = hint;
       }
-
-      if (remainEl) {
+      const active = document.querySelector('.entry.active-entry');
+      const activeLimit = limitForEntry(active);
+      const modalIsRunning = !!(hint && activeLimit && activeLimit.hint === hint);
+      if (remainEl && modalIsRunning) {
         const remainMs = getRemainingMs();
-        if (planned && remainMs != null && document.querySelector('.entry.active-entry')) {
-          const elapsedMs = getElapsedMs();
-          const elapsedLabel = elapsedMs == null ? '' : `${formatRemain(elapsedMs)} / `;
-          const text =
-            remainMs <= 0
-              ? 'Kalan süre: 0:00 (durduruluyor…)'
-              : `Kalan süre: ${formatRemain(remainMs)} · ${elapsedLabel}${planned.minutes} dk`;
-          remainEl.hidden = false;
-          remainEl.classList.toggle('is-urgent', remainMs <= 5 * 60_000);
-          if (remainEl.textContent !== text) remainEl.textContent = text;
-        } else if (!remainEl.hidden || remainEl.textContent) {
-          remainEl.hidden = true;
-          remainEl.textContent = '';
-        }
+        const elapsedMs = getElapsedMs();
+        const text =
+          remainMs == null
+            ? `Max ${activeLimit.minutes} dk`
+            : remainMs <= 0
+              ? 'Kalan süre: 0:00'
+              : `Kalan süre: ${formatRemain(remainMs)} / ${activeLimit.minutes} dk`;
+        remainEl.hidden = false;
+        remainEl.classList.toggle('is-urgent', remainMs != null && remainMs <= 5 * 60_000);
+        if (remainEl.textContent !== text) remainEl.textContent = text;
+      } else if (remainEl && saved) {
+        const text = `Max ${saved.minutes} dk`;
+        remainEl.hidden = false;
+        remainEl.classList.remove('is-urgent');
+        if (remainEl.textContent !== text) remainEl.textContent = text;
+      } else if (remainEl && (!remainEl.hidden || remainEl.textContent)) {
+        remainEl.hidden = true;
+        remainEl.textContent = '';
       }
     } finally {
       uiBusy = false;
@@ -449,6 +524,7 @@
 
   const updateRemainUi = () => {
     updateRowRemain();
+    paintQueueMarks();
     if (document.querySelector('.modal.show .timesheet-modal')) {
       enhanceModal();
     }
@@ -463,18 +539,28 @@
         const btn = e.target.closest('.timesheet-modal button.btn-success, .modal.show button.btn-success');
         if (!btn) return;
         const label = (btn.textContent || '').replace(/\s+/g, ' ').trim();
-        if (!/start timer/i.test(label)) return;
+        if (!/start timer|update entry/i.test(label)) return;
 
-        const plannedInput = document.getElementById('ha-planned-stop-input');
-        const raw = plannedInput?.value?.trim();
-        if (raw && Number(raw) > 0) {
-          setPlanned(raw, false);
-          showToast(`Timer ${Math.min(Math.round(Number(raw)), MAX_MINUTES)} dk sonra otomatik duracak`);
-          setTimeout(updateRemainUi, 400);
-        } else {
-          clearPlanned();
-          updateRemainUi();
+        const modal = btn.closest('.timesheet-modal') || document.querySelector('.modal.show .timesheet-modal');
+        const raw = document.getElementById('ha-planned-stop-input')?.value?.trim();
+        const hint = modal ? modalHint(modal) : '';
+        if (hint && raw && Number(raw) > 0) {
+          upsertLimit(hint, raw);
+          showToast(`Max ${Math.min(600, Math.round(Number(raw)))} dk. Dolunca durur.`);
         }
+        setTimeout(updateRemainUi, 400);
+      },
+      true
+    );
+
+    // Starting a row uses that row's queued minutes, not the last one added
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (!isSelman()) return;
+        const btn = e.target.closest('.entry button.start-btn');
+        if (!btn || /stop/i.test(btn.textContent || '')) return;
+        elapsedAnchor = { key: '', label: '', minutes: 0, at: 0 };
       },
       true
     );
@@ -527,11 +613,12 @@
       return { found: true, minutes, stopped: false };
     }
 
+    const stoppedEntry = active;
     stopBtn.click();
     console.info(LOG, 'DOM stop clicked', { minutes, limitMinutes, label: timeEl?.textContent });
-    showToast(`Timer otomatik durduruldu (${timeEl?.textContent} ≥ ${limitMinutes} dk)`);
-    clearPlanned();
+    showToast(`Max süre doldu (${limitMinutes} dk)`);
     updateRemainUi();
+    setTimeout(() => startNextLimited(stoppedEntry), 700);
     return { found: true, minutes, stopped: true };
   };
 
@@ -595,12 +682,9 @@
     showToast(
       `Timer otomatik durduruldu (${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')} ≥ ${limitMinutes} dk)`
     );
-    clearPlanned();
     updateRemainUi();
-
-    if (window.location.pathname === '/time') {
-      setTimeout(() => window.location.reload(), 800);
-    }
+    const stoppedEntry = document.querySelector('.entry.active-entry');
+    setTimeout(() => startNextLimited(stoppedEntry), 700);
     return true;
   };
 
@@ -611,8 +695,8 @@
       enhanceModal();
       updateRowRemain();
 
-      const planned = getPlanned();
-      const limitMinutes = planned?.minutes || MAX_MINUTES;
+      const limitMinutes = getActiveTargetMinutes();
+      if (!limitMinutes) return;
 
       if (window.location.pathname === '/time') {
         const dom = stopViaDom(limitMinutes);
@@ -634,7 +718,7 @@
 
   const schedulePoll = () => {
     if (pollId) clearInterval(pollId);
-    const interval = getPlanned() ? FAST_POLL_MS : POLL_MS;
+    const interval = loadLimits().length ? FAST_POLL_MS : POLL_MS;
     pollId = setInterval(tick, interval);
   };
 
@@ -643,10 +727,9 @@
       console.debug(LOG, 'skipped — not Selman');
       return;
     }
-    console.info(LOG, 'enabled — planned modal stop + queue add, no queue window');
+    console.info(LOG, 'enabled — per-entry max, chain only limited rows');
     removeQueueWindow();
     setInterval(removeQueueWindow, 1000);
-    window.QueueManager?.init?.();
     bindStartCapture();
     enhanceModal();
     updateRemainUi();
@@ -657,29 +740,27 @@
     uiTickId = setInterval(updateRemainUi, UI_TICK_MS);
 
     // Debounced: only re-inject when modal appears — never from our own writes
+    const isOurs = (node) => {
+      if (!node || node.nodeType !== 1) return false;
+      return (
+        node.id === 'ha-planned-stop-wrap' ||
+        node.id === 'ha-planned-remain-modal' ||
+        node.classList?.contains('ha-remain-badge') ||
+        node.classList?.contains('ha-queue-mark') ||
+        !!node.closest?.('#ha-planned-stop-wrap, .ha-remain-badge, .ha-queue-mark')
+      );
+    };
     const mo = new MutationObserver((mutations) => {
       if (uiBusy) return;
-      const ours = mutations.every((m) => {
-        const t = m.target;
-        return (
-          (t.nodeType === 1 &&
-            (t.id === 'ha-planned-stop-wrap' ||
-              t.id === 'ha-planned-remain-modal' ||
-              t.classList?.contains('ha-remain-badge') ||
-              t.closest?.('#ha-planned-stop-wrap, .ha-remain-badge'))) ||
-          (t.parentElement &&
-            (t.parentElement.id === 'ha-planned-remain-modal' ||
-              t.parentElement.classList?.contains('ha-remain-badge')))
-        );
-      });
-      if (ours) return;
-
-      clearTimeout(moTimer);
-      moTimer = setTimeout(() => {
-        if (document.querySelector('.modal.show .timesheet-modal')) {
-          enhanceModal();
-        }
-      }, 200);
+      const reactWipedBadges = mutations.some((m) =>
+        [...m.removedNodes].some(
+          (node) =>
+            node.nodeType === 1 &&
+            (node.classList?.contains('ha-remain-badge') || node.classList?.contains('ha-queue-mark'))
+        )
+      );
+      if (!reactWipedBadges) return;
+      updateRemainUi();
     });
     mo.observe(document.body, { childList: true, subtree: true });
 
