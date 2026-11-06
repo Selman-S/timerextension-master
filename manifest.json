@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hyperactive Pro Time Enhancer",
-  "version": "4.6.1",
+  "version": "4.6.2",
   "description": "Pulse. Süre timer penceresinden sıraya eklenir; ayri queue penceresi yok.",
   "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [

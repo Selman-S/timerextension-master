@@ -266,33 +266,14 @@
     document.getElementById('queue-floating-btn')?.remove();
   };
 
-  const selectValue = (root) => {
-    if (!root) return null;
-    const nodes = [root, ...root.querySelectorAll('div')].slice(0, 40);
-    for (const node of nodes) {
-      const keys = Object.keys(node);
-      const propKey = keys.find((k) => k.startsWith('__reactProps$'));
-      if (propKey && node[propKey]?.value && typeof node[propKey].value === 'object') {
-        return node[propKey].value;
-      }
-      const fiberKey = keys.find((k) => k.startsWith('__reactFiber$'));
-      let fiber = fiberKey ? node[fiberKey] : null;
-      for (let d = 0; d < 8 && fiber; d++) {
-        const value = fiber.memoizedProps?.value;
-        if (value && typeof value === 'object' && (value.id || value.value || value.name)) return value;
-        fiber = fiber.return;
-      }
-    }
-    return null;
-  };
-
-  const fieldByLabel = (modal, labelText) => {
+  // Visible react-select label inside the form group (page state is not readable from the extension)
+  const selectedLabel = (modal, labelText) => {
     const label = [...modal.querySelectorAll('label')].find((el) => {
-      const text = (el.childNodes[0]?.textContent || el.textContent || '').trim().toLowerCase();
+      const text = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
       return text === labelText || text.startsWith(labelText);
     });
-    const group = label?.closest('.form-group') || label?.parentElement;
-    return selectValue(group);
+    const group = label?.closest('.form-group');
+    return group?.querySelector('.select__single-value')?.textContent?.trim() || '';
   };
 
   // Add the open timer modal entry onto the hidden queue and start it
@@ -302,30 +283,67 @@
       showToast('Önce dakika yaz');
       return;
     }
-    const project = fieldByLabel(modal, 'project');
-    const action = fieldByLabel(modal, 'action item');
-    const task = fieldByLabel(modal, 'task');
-    const notes = modal.querySelector('input.note-input')?.value?.trim() || '';
-    const projectId = project?.value || project?.id;
-    const taskId = action?.id;
-    if (!projectId || !taskId || !notes) {
-      showToast('Proje, action item ve not gerekli');
-      return;
-    }
-    if (!window.QueueManager?.addItem) {
+    if (!window.APIManager?.getClients || !window.QueueManager?.addItem) {
       showToast('Sıra hazır değil. Eklentiyi yenile.');
       return;
     }
+
+    const projectLabel = selectedLabel(modal, 'project');
+    const actionLabel = selectedLabel(modal, 'action item');
+    const taskLabel = selectedLabel(modal, 'task');
+    let notes = modal.querySelector('input.note-input, textarea.note-input')?.value?.trim() || '';
+    if (!notes) notes = taskLabel.replace(/\s*\(\d+\)\s*$/, '').trim() || actionLabel;
+    if (!projectLabel || !actionLabel || !notes) {
+      showToast('Proje, action item ve not gerekli');
+      return;
+    }
+
+    let clients;
+    try {
+      clients = await window.APIManager.getClients();
+    } catch (err) {
+      showToast(err?.message || 'Proje listesi alınamadı');
+      return;
+    }
+    let project = null;
+    for (const client of clients.clients || []) {
+      for (const item of client.Projects || []) {
+        const label = `${item.name} - (${client.name})`;
+        if (label === projectLabel || item.name === projectLabel) {
+          project = { id: item.id, name: item.name };
+        }
+      }
+    }
+    if (!project) {
+      showToast('Proje bulunamadı');
+      return;
+    }
+
+    let taskRes;
+    try {
+      taskRes = await window.APIManager.getTasks(project.id);
+    } catch (err) {
+      showToast(err?.message || 'Action item listesi alınamadı');
+      return;
+    }
+    const actions = taskRes.tasks?.Tasks || taskRes.Tasks || [];
+    const action = actions.find((item) => item.name === actionLabel);
+    if (!action) {
+      showToast('Action item bulunamadı');
+      return;
+    }
+
+    const trelloMatch = taskLabel.match(/\((\d+)\)\s*$/);
     const duration = Math.min(Math.round(minutes), 600);
     const before = await window.StorageManager?.getAll?.();
     const wasRunning = !!before?.queueState?.isRunning && !before?.queueState?.isPaused;
     await window.QueueManager.addItem({
-      projectId,
-      projectName: project.label || project.name || 'Proje',
-      taskId,
-      taskName: action.name || 'Action',
-      trelloId: task?.id && String(task.id) !== String(taskId) ? task.id : null,
-      trelloTitle: task?.title || '',
+      projectId: project.id,
+      projectName: project.name,
+      taskId: action.id,
+      taskName: action.name,
+      trelloId: trelloMatch ? trelloMatch[1] : null,
+      trelloTitle: taskLabel,
       notes,
       duration,
     });
