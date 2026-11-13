@@ -59,29 +59,67 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
+  let limitsCache = null;
+
   const loadLimits = () => {
+    if (limitsCache) return limitsCache;
     try {
       const list = JSON.parse(sessionStorage.getItem(LIMITS_KEY) || '[]');
-      return Array.isArray(list) ? list : [];
+      limitsCache = Array.isArray(list) ? list : [];
     } catch {
-      return [];
+      limitsCache = [];
+    }
+    return limitsCache;
+  };
+
+  const saveLimits = (list) => {
+    limitsCache = list;
+    try {
+      sessionStorage.setItem(LIMITS_KEY, JSON.stringify(list));
+    } catch {
+      /* private mode */
+    }
+    try {
+      chrome.storage?.local?.set({ [LIMITS_KEY]: list });
+    } catch {
+      /* storage unavailable */
     }
   };
 
-  const saveLimits = (list) => sessionStorage.setItem(LIMITS_KEY, JSON.stringify(list));
+  // Keep limits after a reload; sessionStorage alone drops when the tab identity changes
+  const hydrateLimits = () => {
+    try {
+      chrome.storage?.local?.get(LIMITS_KEY, (data) => {
+        const stored = data?.[LIMITS_KEY];
+        if (!Array.isArray(stored) || !stored.length) return;
+        const merged = new Map();
+        [...stored, ...loadLimits()].forEach((item) => {
+          const key = item.hint || item.visible || item.rowBlob;
+          if (key) merged.set(key, item);
+        });
+        saveLimits([...merged.values()]);
+        updateRemainUi();
+      });
+    } catch {
+      /* ignore */
+    }
+  };
 
   const upsertLimit = (hint, minutes, extra = {}) => {
     const mins = Math.min(600, Math.max(1, Math.round(Number(minutes) || 0)));
     const rowBlob = extra.rowBlob || '';
+    const visible = extra.visible || '';
     const list = loadLimits().filter((item) => {
       if (item.hint === hint) return false;
       if (rowBlob && item.rowBlob === rowBlob) return false;
+      if (visible && item.visible === visible) return false;
       return true;
     });
     list.push({
       hint,
       minutes: mins,
       rowBlob,
+      visible,
       project: extra.project || '',
       task: extra.task || '',
     });
@@ -326,12 +364,27 @@
     }
   };
 
-  const entryBlob = (entry) => entry?.querySelector('.entry-info')?.textContent || '';
+  const entryBlob = (entry) => {
+    const info = entry?.querySelector('.entry-info');
+    if (!info) return '';
+    const clone = info.cloneNode(true);
+    clone.querySelectorAll('.ha-queue-mark, .ha-remain-badge').forEach((node) => node.remove());
+    return clone.textContent || '';
+  };
+
+  // ClickUp title or note actually painted on the row — stable across reload
+  const rowVisible = (entry) =>
+    norm(
+      entry?.querySelector('.clickup-link')?.textContent ||
+        entry?.querySelector('.entry-note')?.textContent ||
+        ''
+    );
 
   const norm = (value) => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
   // Row that opened the modal, so the badge can stick even when the note is not rendered
   let pendingRowBlob = '';
+  let pendingVisible = '';
 
   // "Project - (Client)|note" so two tasks on the same brand stay separate
   const modalFields = (modal) => {
@@ -348,22 +401,61 @@
     return `${project}|${distinctive.slice(0, 40)}`;
   };
 
+  const projectOf = (item) => item.project || String(item.hint || '').split('|')[0] || '';
+
+  const limitMatches = (item, entry) => {
+    const blob = norm(entryBlob(entry));
+    const shown = rowVisible(entry);
+    const visible = norm(item.visible || '');
+    if (visible && shown && (shown.includes(visible.slice(0, 24)) || visible.includes(shown.slice(0, 24)))) {
+      return true;
+    }
+    if (visible.length >= 8 && blob.includes(visible.slice(0, 24))) return true;
+    if (item.rowBlob && blob && (blob === item.rowBlob || blob.includes(item.rowBlob) || item.rowBlob.includes(blob))) {
+      return true;
+    }
+    const project = projectOf(item);
+    const note = String(item.hint || '').split('|')[1] || '';
+    const task = (item.task || '').slice(0, 18);
+    if (!project || !blob.includes(project)) return false;
+    if (note && blob.includes(note.slice(0, 18))) return true;
+    if (task && blob.includes(task)) return true;
+    return false;
+  };
+
+  const entryList = () => [...document.querySelectorAll('.entries .entry, .timesheet .entry')];
+
+  // One pass so a limit is not painted on two rows, and a lone project still finds its row after reload
+  const limitMap = () => {
+    const entries = entryList();
+    const limits = loadLimits();
+    const map = new Map();
+    const used = new Set();
+    entries.forEach((entry) => {
+      const hits = limits.filter((item) => !used.has(item) && limitMatches(item, entry));
+      hits.sort((a, b) => (b.visible || b.hint || '').length - (a.visible || a.hint || '').length);
+      if (!hits[0]) return;
+      map.set(entry, hits[0]);
+      used.add(hits[0]);
+    });
+    limits
+      .filter((item) => !used.has(item))
+      .forEach((item) => {
+        const project = projectOf(item);
+        if (!project) return;
+        const rows = entries.filter((entry) => {
+          if (map.has(entry)) return false;
+          const blob = norm(entryBlob(entry));
+          return blob.startsWith(project) || blob.includes(`${project} (`);
+        });
+        if (rows.length === 1) map.set(rows[0], item);
+      });
+    return map;
+  };
+
   const limitForEntry = (entry) => {
     if (!entry) return null;
-    const blob = norm(entryBlob(entry));
-    const hits = loadLimits().filter((item) => {
-      // Same visible row that was open in Update (notes are hidden when a task link is shown)
-      if (item.rowBlob && blob === item.rowBlob) return true;
-      const project = item.project || String(item.hint || '').split('|')[0];
-      const note = String(item.hint || '').split('|')[1] || '';
-      const task = (item.task || '').slice(0, 18);
-      if (!project || !blob.includes(project)) return false;
-      if (note && blob.includes(note.slice(0, 18))) return true;
-      if (task && blob.includes(task)) return true;
-      return false;
-    });
-    hits.sort((a, b) => b.hint.length - a.hint.length);
-    return hits[0] || null;
+    return limitMap().get(entry) || null;
   };
 
   // After a max is reached, start the next row that also has a max. Skip the rest.
@@ -597,12 +689,14 @@
         if (hint && raw && Number(raw) > 0) {
           upsertLimit(hint, raw, {
             rowBlob: pendingRowBlob,
+            visible: pendingVisible || fields.task || fields.notes,
             project: fields.project,
             task: fields.task,
           });
           showToast(`Max ${Math.min(600, Math.round(Number(raw)))} dk. Dolunca durur.`);
         }
         pendingRowBlob = '';
+        pendingVisible = '';
         [400, 1000, 1800].forEach((ms) => setTimeout(updateRemainUi, ms));
       },
       true
@@ -615,10 +709,15 @@
         if (!isSelman()) return;
         const edit = e.target.closest?.('.entry .edit-btn');
         if (edit) {
-          pendingRowBlob = norm(entryBlob(edit.closest('.entry')));
+          const row = edit.closest('.entry');
+          pendingRowBlob = norm(entryBlob(row));
+          pendingVisible = rowVisible(row);
           return;
         }
-        if (e.target.closest?.('.new-entry-btn')) pendingRowBlob = '';
+        if (e.target.closest?.('.new-entry-btn')) {
+          pendingRowBlob = '';
+          pendingVisible = '';
+        }
       },
       true
     );
@@ -800,6 +899,7 @@
     console.info(LOG, 'enabled — per-entry max, chain only limited rows');
     removeQueueWindow();
     setInterval(removeQueueWindow, 1000);
+    hydrateLimits();
     bindStartCapture();
     // Close button, Cancel, and Escape dismiss the modal before the next UI tick
     document.addEventListener(
