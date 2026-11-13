@@ -70,10 +70,21 @@
 
   const saveLimits = (list) => sessionStorage.setItem(LIMITS_KEY, JSON.stringify(list));
 
-  const upsertLimit = (hint, minutes) => {
+  const upsertLimit = (hint, minutes, extra = {}) => {
     const mins = Math.min(600, Math.max(1, Math.round(Number(minutes) || 0)));
-    const list = loadLimits().filter((item) => item.hint !== hint);
-    list.push({ hint, minutes: mins });
+    const rowBlob = extra.rowBlob || '';
+    const list = loadLimits().filter((item) => {
+      if (item.hint === hint) return false;
+      if (rowBlob && item.rowBlob === rowBlob) return false;
+      return true;
+    });
+    list.push({
+      hint,
+      minutes: mins,
+      rowBlob,
+      project: extra.project || '',
+      task: extra.task || '',
+    });
     saveLimits(list);
   };
 
@@ -319,22 +330,37 @@
 
   const norm = (value) => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
+  // Row that opened the modal, so the badge can stick even when the note is not rendered
+  let pendingRowBlob = '';
+
   // "Project - (Client)|note" so two tasks on the same brand stay separate
+  const modalFields = (modal) => {
+    const project = norm(selectedLabel(modal, 'project').split(' - (')[0]);
+    const notes = norm(modal.querySelector('input.note-input, textarea.note-input')?.value || '');
+    const task = norm(selectedLabel(modal, 'task').replace(/\s*\(\d+\)\s*$/, ''));
+    return { project, notes, task };
+  };
+
   const modalHint = (modal) => {
-    const project = selectedLabel(modal, 'project').split(' - (')[0];
-    const notes = modal.querySelector('input.note-input, textarea.note-input')?.value || '';
-    const task = selectedLabel(modal, 'task').replace(/\s*\(\d+\)\s*$/, '');
-    const distinctive = notes.trim() || task.trim();
-    if (!project.trim() || !distinctive) return '';
-    return `${norm(project)}|${norm(distinctive).slice(0, 40)}`;
+    const { project, notes, task } = modalFields(modal);
+    const distinctive = notes || task;
+    if (!project || !distinctive) return '';
+    return `${project}|${distinctive.slice(0, 40)}`;
   };
 
   const limitForEntry = (entry) => {
     if (!entry) return null;
     const blob = norm(entryBlob(entry));
     const hits = loadLimits().filter((item) => {
-      const [project, note] = String(item.hint || '').split('|');
-      return project && note && blob.includes(project) && blob.includes(note.slice(0, 18));
+      // Same visible row that was open in Update (notes are hidden when a task link is shown)
+      if (item.rowBlob && blob === item.rowBlob) return true;
+      const project = item.project || String(item.hint || '').split('|')[0];
+      const note = String(item.hint || '').split('|')[1] || '';
+      const task = (item.task || '').slice(0, 18);
+      if (!project || !blob.includes(project)) return false;
+      if (note && blob.includes(note.slice(0, 18))) return true;
+      if (task && blob.includes(task)) return true;
+      return false;
     });
     hits.sort((a, b) => b.hint.length - a.hint.length);
     return hits[0] || null;
@@ -566,12 +592,33 @@
 
         const modal = btn.closest('.timesheet-modal') || document.querySelector('.modal.show .timesheet-modal');
         const raw = document.getElementById('ha-planned-stop-input')?.value?.trim();
-        const hint = modal ? modalHint(modal) : '';
+        const fields = modal ? modalFields(modal) : null;
+        const hint = fields && (fields.notes || fields.task) ? `${fields.project}|${(fields.notes || fields.task).slice(0, 40)}` : '';
         if (hint && raw && Number(raw) > 0) {
-          upsertLimit(hint, raw);
+          upsertLimit(hint, raw, {
+            rowBlob: pendingRowBlob,
+            project: fields.project,
+            task: fields.task,
+          });
           showToast(`Max ${Math.min(600, Math.round(Number(raw)))} dk. Dolunca durur.`);
         }
-        setTimeout(updateRemainUi, 400);
+        pendingRowBlob = '';
+        [400, 1000, 1800].forEach((ms) => setTimeout(updateRemainUi, ms));
+      },
+      true
+    );
+
+    // Remember the row opened from the pencil, before the modal covers it
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (!isSelman()) return;
+        const edit = e.target.closest?.('.entry .edit-btn');
+        if (edit) {
+          pendingRowBlob = norm(entryBlob(edit.closest('.entry')));
+          return;
+        }
+        if (e.target.closest?.('.new-entry-btn')) pendingRowBlob = '';
       },
       true
     );
@@ -803,7 +850,9 @@
         [...m.removedNodes].some(
           (node) =>
             node.nodeType === 1 &&
-            (node.classList?.contains('ha-remain-badge') || node.classList?.contains('ha-queue-mark'))
+            (node.classList?.contains('ha-remain-badge') ||
+              node.classList?.contains('ha-queue-mark') ||
+              !!node.querySelector?.('.ha-remain-badge, .ha-queue-mark'))
         )
       );
       if (!reactWipedBadges) return;
