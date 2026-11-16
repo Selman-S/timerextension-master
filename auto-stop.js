@@ -120,6 +120,7 @@
       minutes: mins,
       rowBlob,
       visible,
+      day: extra.day || '',
       project: extra.project || '',
       task: extra.task || '',
     });
@@ -403,29 +404,51 @@
 
   const projectOf = (item) => item.project || String(item.hint || '').split('|')[0] || '';
 
+  // Limits belong to the day they were saved on, not every later row with a similar title
+  const pageDay = () => {
+    const label = document.querySelector('.calendar-navigation .month')?.textContent || '';
+    const match = label.replace(/\s+/g, ' ').match(/(\d{1,2})\s+([A-Za-z]{3})/);
+    if (!match) return '';
+    const months = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    const month = months[match[2].toLowerCase()];
+    if (!month) return '';
+    const year = new Date().getFullYear();
+    return `${year}-${String(month).padStart(2, '0')}-${String(match[1]).padStart(2, '0')}`;
+  };
+
+  // Text after the project name, so two Pegasus rows do not share one max
+  const taskTail = (text, project) => {
+    let value = norm(text);
+    const name = norm(project);
+    if (name && value.startsWith(name)) value = value.slice(name.length);
+    return value.replace(/^[\s\-–()]+/, '').trim();
+  };
+
+  const sameTask = (a, b) => {
+    const left = norm(a);
+    const right = norm(b);
+    if (left.length < 12 || right.length < 12) return false;
+    const n = 16;
+    return left.includes(right.slice(0, n)) || right.includes(left.slice(0, n));
+  };
+
   const limitMatches = (item, entry) => {
-    const blob = norm(entryBlob(entry));
+    const day = pageDay();
+    if (!item.day || !day || item.day !== day) return false;
     const shown = rowVisible(entry);
-    const visible = norm(item.visible || '');
-    if (visible && shown && (shown.includes(visible.slice(0, 24)) || visible.includes(shown.slice(0, 24)))) {
-      return true;
-    }
-    if (visible.length >= 8 && blob.includes(visible.slice(0, 24))) return true;
-    if (item.rowBlob && blob && (blob === item.rowBlob || blob.includes(item.rowBlob) || item.rowBlob.includes(blob))) {
-      return true;
-    }
     const project = projectOf(item);
     const note = String(item.hint || '').split('|')[1] || '';
-    const task = (item.task || '').slice(0, 18);
-    if (!project || !blob.includes(project)) return false;
-    if (note && blob.includes(note.slice(0, 18))) return true;
-    if (task && blob.includes(task)) return true;
-    return false;
+    const keys = [item.visible, item.task, note].filter(Boolean);
+    const shownTail = taskTail(shown, project);
+    return keys.some((key) => {
+      const tail = taskTail(key, project);
+      return sameTask(shownTail, tail) || sameTask(shown, key);
+    });
   };
 
   const entryList = () => [...document.querySelectorAll('.entries .entry, .timesheet .entry')];
 
-  // One pass so a limit is not painted on two rows, and a lone project still finds its row after reload
+  // One limit per row, and only when the task text matches — never by project alone
   const limitMap = () => {
     const entries = entryList();
     const limits = loadLimits();
@@ -438,18 +461,6 @@
       map.set(entry, hits[0]);
       used.add(hits[0]);
     });
-    limits
-      .filter((item) => !used.has(item))
-      .forEach((item) => {
-        const project = projectOf(item);
-        if (!project) return;
-        const rows = entries.filter((entry) => {
-          if (map.has(entry)) return false;
-          const blob = norm(entryBlob(entry));
-          return blob.startsWith(project) || blob.includes(`${project} (`);
-        });
-        if (rows.length === 1) map.set(rows[0], item);
-      });
     return map;
   };
 
@@ -690,6 +701,7 @@
           upsertLimit(hint, raw, {
             rowBlob: pendingRowBlob,
             visible: pendingVisible || fields.task || fields.notes,
+            day: pageDay(),
             project: fields.project,
             task: fields.task,
           });

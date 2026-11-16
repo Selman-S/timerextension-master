@@ -148,16 +148,19 @@
         background: var(--mp-card);
         border: 1px solid var(--mp-line);
         border-radius: 12px;
-        padding: 14px 16px 12px;
-        margin: 0 0 14px;
+        padding: 8px 12px;
+        margin: 0 0 10px;
         box-shadow: 0 1px 0 rgba(28, 25, 23, 0.04);
       }
-      #${PANEL_ID} .mp-head {
+      #${PANEL_ID} .mp-head,
+      #${PANEL_ID} .mp-line {
         display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 12px;
+        align-items: center;
+        gap: 14px;
+        margin: 0;
+        min-height: 28px;
+        flex-wrap: nowrap;
+        overflow: hidden;
       }
       #${PANEL_ID} .mp-title {
         margin: 0;
@@ -188,10 +191,45 @@
       #${PANEL_ID} .mp-refresh:hover { border-color: #a8a29e; }
       #${PANEL_ID} .mp-refresh:disabled { opacity: 0.55; cursor: wait; }
       #${PANEL_ID} .mp-metrics {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 12px;
+        display: contents;
+      }
+      #${PANEL_ID} .mp-stat {
+        font-size: 11px;
+        color: var(--mp-muted);
+        white-space: nowrap;
+      }
+      #${PANEL_ID} .mp-stat b {
+        font-weight: 600;
+        margin-right: 6px;
+      }
+      #${PANEL_ID} .mp-stat strong {
+        font-size: 20px;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        font-weight: 700;
+      }
+      #${PANEL_ID} .mp-stat.is-now,
+      #${PANEL_ID} .mp-stat.is-now strong { color: #0f766e; }
+      #${PANEL_ID} .mp-stat.is-prev,
+      #${PANEL_ID} .mp-stat.is-prev strong { color: #1d4ed8; }
+      #${PANEL_ID} .mp-stat.is-avg,
+      #${PANEL_ID} .mp-stat.is-avg strong { color: #6d28d9; }
+      #${PANEL_ID} .mp-stat.is-up,
+      #${PANEL_ID} .mp-stat.is-up strong { color: var(--mp-up); }
+      #${PANEL_ID} .mp-stat.is-down,
+      #${PANEL_ID} .mp-stat.is-down strong { color: var(--mp-down); }
+      #${PANEL_ID} .mp-line .mp-chart-inline {
+        margin-left: auto;
+      }
+      #${PANEL_ID} .mp-chart-inline {
+        border: 0;
+        background: transparent;
+        color: var(--mp-accent);
+        font-size: 12px;
+        font-weight: 650;
+        cursor: pointer;
+        padding: 0;
+        white-space: nowrap;
       }
       #${PANEL_ID} .mp-metric {
         background: var(--mp-bg);
@@ -228,8 +266,12 @@
         color: var(--mp-muted);
       }
       #${PANEL_ID} .mp-chart-wrap {
+        border-top: 0;
+        margin-top: 0;
+      }
+      #${PANEL_ID} .mp-chart-wrap.is-open {
         border-top: 1px solid var(--mp-line);
-        margin-top: 2px;
+        margin-top: 8px;
       }
       #${PANEL_ID} .mp-chart-toggle {
         width: 100%;
@@ -482,49 +524,20 @@
           ? 'geçen ay · ortalamanın üstünde'
           : 'geçen ay · ortalamanın altında';
 
-    const name = data.user?.name ? ` · ${data.user.name}` : '';
-
+    const name = data.user?.name || '';
+    const safeName = name.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
     panel.innerHTML = `
-      <div class="mp-head">
-        <div>
-          <h2 class="mp-title">Senin Pulse${name}</h2>
-          <p class="mp-sub">Sadece kendi billable saatlerin · son ${TREND_MONTHS} ay</p>
-        </div>
-        <div class="mp-actions">
-          <button type="button" class="mp-refresh" id="ha-my-pulse-refresh">Yenile</button>
-        </div>
-      </div>
-      <div class="mp-metrics">
-        <div class="mp-metric">
-          <span class="mp-metric-label">Bu ay</span>
-          <div class="mp-metric-value">${formatHm(data.current)}<span>sa</span></div>
-          <div class="mp-metric-hint">${data.months[data.months.length - 1].label} · devam ediyor</div>
-        </div>
-        <div class="mp-metric">
-          <span class="mp-metric-label">Geçen ay</span>
-          <div class="mp-metric-value">${formatHm(data.previous)}<span>sa</span></div>
-          <div class="mp-metric-hint">${data.months[data.months.length - 2]?.label || '—'}</div>
-        </div>
-        <div class="mp-metric">
-          <span class="mp-metric-label">Ort. (tam aylar)</span>
-          <div class="mp-metric-value">${formatHm(Math.round(data.avg))}<span>sa</span></div>
-          <div class="mp-metric-hint">son ${TREND_MONTHS - 1} tamamlanmış ay</div>
-        </div>
-        <div class="mp-metric ${vsClass}">
-          <span class="mp-metric-label">vs ortalama</span>
-          <div class="mp-metric-value">${vsText}</div>
-          <div class="mp-metric-hint">${vsHint}</div>
-        </div>
+      <div class="mp-line">
+        <h2 class="mp-title">${safeName}</h2>
+        <span class="mp-stat is-now"><b>Bu ay</b><strong>${formatHm(data.current)}</strong></span>
+        <span class="mp-stat is-prev"><b>Geçen ay</b><strong>${formatHm(data.previous)}</strong></span>
+        <span class="mp-stat is-avg"><b>Ort</b><strong>${formatHm(Math.round(data.avg))}</strong></span>
+        <span class="mp-stat ${vsClass}" title="${vsHint}"><b>vs ort</b><strong>${vsText}</strong></span>
+        <button type="button" class="mp-chart-inline" id="ha-my-pulse-chart-toggle"
+          aria-expanded="${chartOpen ? 'true' : 'false'}">${chartOpen ? 'Grafiği gizle' : 'Grafik'}</button>
+        <button type="button" class="mp-refresh" id="ha-my-pulse-refresh">Yenile</button>
       </div>
       <div class="mp-chart-wrap ${chartOpen ? 'is-open' : ''}" id="ha-my-pulse-chart">
-        <button type="button" class="mp-chart-toggle" id="ha-my-pulse-chart-toggle"
-          aria-expanded="${chartOpen ? 'true' : 'false'}" aria-controls="ha-my-pulse-chart-body">
-          <span class="mp-chart-toggle-left">
-            <span class="mp-chart-chevron" aria-hidden="true">▾</span>
-            Aylık billable · son 12 ay
-          </span>
-          <span>${chartOpen ? 'Gizle' : 'Grafiği göster'}</span>
-        </button>
         <div class="mp-chart-body" id="ha-my-pulse-chart-body">
           <div class="mp-chart-head">
             <div class="mp-chart-legend">
@@ -548,8 +561,7 @@
       chartOpen = !chartOpen;
       chartWrap?.classList.toggle('is-open', chartOpen);
       chartToggle.setAttribute('aria-expanded', chartOpen ? 'true' : 'false');
-      const label = chartToggle.querySelector('span:last-child');
-      if (label) label.textContent = chartOpen ? 'Gizle' : 'Grafiği göster';
+      chartToggle.textContent = chartOpen ? 'Grafiği gizle' : 'Grafik';
     });
   };
 
