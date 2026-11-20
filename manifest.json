@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hyperactive Pro Time Enhancer",
-  "version": "4.7.14",
+  "version": "4.7.18",
   "description": "Pulse. Kayda max dakika yazılır; sadece sınırlı kayıtlar sırayla durup başlar.",
   "permissions": ["storage", "activeTab", "scripting"],
   "content_scripts": [
@@ -9,7 +9,8 @@
       "matches": ["https://hyperactive.pro/*"],
       "js": [
         "my-pulse.js",
-        "auto-stop.js"
+        "auto-stop.js",
+        "workload-warn.js"
       ]
     }
   ],

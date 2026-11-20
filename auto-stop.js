@@ -72,21 +72,30 @@
     return limitsCache;
   };
 
+  // Past days cannot be edited, so only today's limits are kept
+  const keepToday = (list) => {
+    const day = pageDay();
+    if (!day) return list.filter((item) => item.day);
+    return list.filter((item) => item.day === day);
+  };
+
+  const limitKey = (item) => item.id || `${item.day}|${item.ordinal}|${item.visible || item.hint}`;
+
   const saveLimits = (list) => {
-    limitsCache = list;
+    limitsCache = keepToday(list);
     try {
-      sessionStorage.setItem(LIMITS_KEY, JSON.stringify(list));
+      sessionStorage.setItem(LIMITS_KEY, JSON.stringify(limitsCache));
     } catch {
       /* private mode */
     }
     try {
-      chrome.storage?.local?.set({ [LIMITS_KEY]: list });
+      chrome.storage?.local?.set({ [LIMITS_KEY]: limitsCache });
     } catch {
       /* storage unavailable */
     }
   };
 
-  // Keep limits after a reload; sessionStorage alone drops when the tab identity changes
+  // Keep limits after a reload. Merge by id so two rows with the same note both survive.
   const hydrateLimits = () => {
     try {
       chrome.storage?.local?.get(LIMITS_KEY, (data) => {
@@ -94,7 +103,7 @@
         if (!Array.isArray(stored) || !stored.length) return;
         const merged = new Map();
         [...stored, ...loadLimits()].forEach((item) => {
-          const key = item.hint || item.visible || item.rowBlob;
+          const key = limitKey(item);
           if (key) merged.set(key, item);
         });
         saveLimits([...merged.values()]);
@@ -441,8 +450,15 @@
   const limitMatches = (item, entry) => {
     const day = pageDay();
     if (!item.day || !day || item.day !== day) return false;
+    const shown = rowVisible(entry);
+    const key = norm(item.visible);
+    // Prefer the task title saved with this limit. Index alone misses rows after a re-render.
+    if (key && shown === key) {
+      const group = rowsLike(key);
+      if (group.length <= 1) return group[0] === entry;
+      return group[item.ordinal] === entry || group.indexOf(entry) === item.ordinal;
+    }
     if (!Number.isInteger(item.ordinal) || item.ordinal < 0) return false;
-    // Index in today's list, not the description text
     return entryList()[item.ordinal] === entry;
   };
 
@@ -468,20 +484,25 @@
           list.push(item);
           return;
         }
+        const nextId = `${item.day}|${ordinal}|${shown}`;
+        if (loadLimits().some((other) => other !== item && other.id === nextId)) {
+          list.push(item);
+          return;
+        }
         pinned = true;
         changed = true;
         list.push({
           ...item,
           ordinal,
           visible: shown,
-          id: `${item.day}|${ordinal}|${shown}`,
+          id: nextId,
         });
       });
     list.reverse();
     if (changed) saveLimits(list);
   };
 
-  const entryList = () => [...document.querySelectorAll('.entries .entry, .timesheet .entry')];
+  const entryList = () => [...document.querySelectorAll('.entries > .entry')];
 
   // One limit per row, and only when the task text matches — never by project alone
   const limitMap = () => {
