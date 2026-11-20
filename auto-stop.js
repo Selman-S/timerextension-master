@@ -109,18 +109,16 @@
     const mins = Math.min(600, Math.max(1, Math.round(Number(minutes) || 0)));
     const rowBlob = extra.rowBlob || '';
     const visible = extra.visible || '';
-    const list = loadLimits().filter((item) => {
-      if (item.hint === hint) return false;
-      if (rowBlob && item.rowBlob === rowBlob) return false;
-      if (visible && item.visible === visible) return false;
-      return true;
-    });
+    const list = loadLimits().filter((item) => item.id !== extra.id);
+    const id = extra.id || '';
     list.push({
+      id,
       hint,
       minutes: mins,
       rowBlob,
       visible,
       day: extra.day || '',
+      ordinal: Number.isInteger(extra.ordinal) ? extra.ordinal : -1,
       project: extra.project || '',
       task: extra.task || '',
     });
@@ -386,6 +384,7 @@
   // Row that opened the modal, so the badge can stick even when the note is not rendered
   let pendingRowBlob = '';
   let pendingVisible = '';
+  let pendingOrdinal = -1;
 
   // "Project - (Client)|note" so two tasks on the same brand stay separate
   const modalFields = (modal) => {
@@ -432,18 +431,54 @@
     return left.includes(right.slice(0, n)) || right.includes(left.slice(0, n));
   };
 
+  // Same description on a new entry must not inherit another entry's max
+  const rowsLike = (visible) => {
+    const key = norm(visible);
+    if (!key) return [];
+    return entryList().filter((entry) => rowVisible(entry) === key);
+  };
+
   const limitMatches = (item, entry) => {
     const day = pageDay();
     if (!item.day || !day || item.day !== day) return false;
-    const shown = rowVisible(entry);
-    const project = projectOf(item);
-    const note = String(item.hint || '').split('|')[1] || '';
-    const keys = [item.visible, item.task, note].filter(Boolean);
-    const shownTail = taskTail(shown, project);
-    return keys.some((key) => {
-      const tail = taskTail(key, project);
-      return sameTask(shownTail, tail) || sameTask(shown, key);
-    });
+    if (!Number.isInteger(item.ordinal) || item.ordinal < 0) return false;
+    // Index in today's list, not the description text
+    return entryList()[item.ordinal] === entry;
+  };
+
+  // After Start, attach a brand-new limit to the row that actually began
+  const pinFreshLimits = () => {
+    const active = runningEntry();
+    if (!active) return;
+    const shown = rowVisible(active);
+    let changed = false;
+    const list = [];
+    let pinned = false;
+    loadLimits()
+      .slice()
+      .reverse()
+      .forEach((item) => {
+        const fresh = String(item.id || '').startsWith('new|');
+        if (pinned || !fresh || item.ordinal >= 0 || item.day !== pageDay()) {
+          list.push(item);
+          return;
+        }
+        const ordinal = entryList().indexOf(active);
+        if (ordinal < 0) {
+          list.push(item);
+          return;
+        }
+        pinned = true;
+        changed = true;
+        list.push({
+          ...item,
+          ordinal,
+          visible: shown,
+          id: `${item.day}|${ordinal}|${shown}`,
+        });
+      });
+    list.reverse();
+    if (changed) saveLimits(list);
   };
 
   const entryList = () => [...document.querySelectorAll('.entries .entry, .timesheet .entry')];
@@ -630,8 +665,16 @@
           e.preventDefault();
           e.stopPropagation();
           const open = document.querySelector('.modal.show .timesheet-modal');
-          const hint = open ? modalHint(open) : '';
-          if (hint) removeLimitByHint(hint);
+          const adding = /add time entry/i.test(
+            open?.querySelector('.timesheet-modal-header__title')?.textContent || ''
+          );
+          if (!adding && pendingVisible) {
+            saveLimits(
+              loadLimits().filter(
+                (item) => !(item.day === pageDay() && item.ordinal === pendingOrdinal && norm(item.visible) === pendingVisible)
+              )
+            );
+          }
           if (inputEl) inputEl.value = '';
           showToast('Max sınır kaldırıldı');
           updateRemainUi();
@@ -641,15 +684,41 @@
 
       const input = wrap.querySelector('#ha-planned-stop-input');
       const remainEl = wrap.querySelector('#ha-planned-remain-modal');
-      const hint = modalHint(modal);
-      const saved = loadLimits().find((item) => item.hint === hint);
-      if (saved && input && document.activeElement !== input && input.dataset.filledHint !== hint) {
-        input.value = String(saved.minutes);
-        input.dataset.filledHint = hint;
+      const adding = /add time entry/i.test(
+        modal.querySelector('.timesheet-modal-header__title')?.textContent || ''
+      );
+      // A new entry starts empty even when the note matches an older time
+      if (adding) {
+        if (input && input.dataset.mode !== 'add') {
+          input.value = '';
+          input.dataset.filledHint = '';
+          input.dataset.mode = 'add';
+        }
+        if (remainEl && (!remainEl.hidden || remainEl.textContent)) {
+          remainEl.hidden = true;
+          remainEl.textContent = '';
+        }
       }
-      const active = document.querySelector('.entry.active-entry');
+      const hint = modalHint(modal);
+      const saved = adding
+        ? null
+        : loadLimits().find(
+            (item) =>
+              item.day === pageDay() &&
+              item.ordinal === pendingOrdinal &&
+              norm(item.visible) === pendingVisible
+          );
+      if (!adding && saved && input && document.activeElement !== input && input.dataset.filledHint !== hint) {
+        input.value = String(saved.minutes);
+        input.dataset.filledHint = `${hint}|${pendingOrdinal}`;
+        input.dataset.mode = 'edit';
+      }
+      const active = runningEntry();
       const activeLimit = limitForEntry(active);
-      const modalIsRunning = !!(hint && activeLimit && activeLimit.hint === hint);
+      const modalIsRunning =
+        !adding &&
+        !!activeLimit &&
+        entryList()[pendingOrdinal] === active;
       if (remainEl && modalIsRunning) {
         const remainMs = getRemainingMs();
         const elapsedMs = getElapsedMs();
@@ -677,6 +746,7 @@
   };
 
   const updateRemainUi = () => {
+    pinFreshLimits();
     updateRowRemain();
     paintQueueMarks();
     enhanceModal();
@@ -697,11 +767,18 @@
         const raw = document.getElementById('ha-planned-stop-input')?.value?.trim();
         const fields = modal ? modalFields(modal) : null;
         const hint = fields && (fields.notes || fields.task) ? `${fields.project}|${(fields.notes || fields.task).slice(0, 40)}` : '';
+        const adding = /add time entry/i.test(
+          modal?.querySelector('.timesheet-modal-header__title')?.textContent || ''
+        );
+        const visible = adding ? fields?.notes || fields?.task || '' : pendingVisible || fields?.task || fields?.notes || '';
+        const ordinal = adding ? -1 : pendingOrdinal;
         if (hint && raw && Number(raw) > 0) {
           upsertLimit(hint, raw, {
+            id: adding ? `new|${pageDay()}|${Date.now()}` : `${pageDay()}|${ordinal}|${visible}`,
             rowBlob: pendingRowBlob,
-            visible: pendingVisible || fields.task || fields.notes,
+            visible,
             day: pageDay(),
+            ordinal,
             project: fields.project,
             task: fields.task,
           });
@@ -709,6 +786,7 @@
         }
         pendingRowBlob = '';
         pendingVisible = '';
+        pendingOrdinal = -1;
         [400, 1000, 1800].forEach((ms) => setTimeout(updateRemainUi, ms));
       },
       true
@@ -724,11 +802,13 @@
           const row = edit.closest('.entry');
           pendingRowBlob = norm(entryBlob(row));
           pendingVisible = rowVisible(row);
+          pendingOrdinal = entryList().indexOf(row);
           return;
         }
         if (e.target.closest?.('.new-entry-btn')) {
           pendingRowBlob = '';
           pendingVisible = '';
+          pendingOrdinal = -1;
         }
       },
       true
